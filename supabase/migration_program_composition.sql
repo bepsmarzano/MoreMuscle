@@ -82,13 +82,14 @@ create policy "circuit_programs_athlete_select" on public.circuit_programs
     where p.id = auth.uid() and pl.circuit_program_id = circuit_programs.id
   ));
 
+-- la vecchia policy su workouts referenzia plan_sessions (join nella USING):
+-- va eliminata PRIMA di droppare plan_sessions, altrimenti Postgres si rifiuta.
+-- (la tabella workouts resta nel DB, solo l'admin può ancora leggerla/scriverla)
+drop policy if exists "workouts_athlete_select_assigned" on public.workouts;
+
 -- le sessioni non sono più righe plan_sessions: non serve più la tabella
 drop policy if exists "plan_sessions_athlete_select" on public.plan_sessions;
 drop table if exists public.plan_sessions;
-
--- le sessioni non sono più righe workouts: la vecchia policy read-athlete non serve più
--- (la tabella workouts resta nel DB, solo l'admin può ancora leggerla/scriverla)
-drop policy if exists "workouts_athlete_select_assigned" on public.workouts;
 
 -- tracciabilità dei log: non c'è più un workout_id reale a cui agganciarsi
 alter table public.exercise_logs add column plan_id uuid references public.plans(id) on delete set null;
