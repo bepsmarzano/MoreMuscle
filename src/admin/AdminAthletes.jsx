@@ -1,24 +1,29 @@
 import { useState, useEffect } from "react";
-import { UserPlus, RefreshCw, X, Check } from "lucide-react";
+import { UserPlus, RefreshCw, X, Check, Plus, ChevronDown, ChevronUp } from "lucide-react";
 import { S } from "../shared/ui.jsx";
 import * as api from "../lib/api.js";
 
 // ---------------------------------------------------------------------------
 // Pannello "Atleti": lista atleti invitati con riepilogo questionario,
-// assegnazione dell'allenamento (tra quelli creati dall'admin) e invito
-// di nuovi atleti via email.
+// assegnazione del piano (tra quelli creati nella tab Piani), massimali e
+// storico dei log (rep AMRAP / carichi usati) per decidere le sessioni
+// future, e invito di nuovi atleti via email.
 // ---------------------------------------------------------------------------
-export default function AdminAthletes({ workouts }) {
+export default function AdminAthletes() {
   const [athletes, setAthletes] = useState([]);
+  const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [inviting, setInviting] = useState(false);
   const [busyId, setBusyId] = useState(null);
+  const [expandedId, setExpandedId] = useState(null);
 
   const load = async () => {
     setLoading(true);
     try {
-      setAthletes(await api.listAthletes());
+      const [a, p] = await Promise.all([api.listAthletes(), api.listPlans()]);
+      setAthletes(a);
+      setPlans(p);
       setError("");
     } catch (e) {
       setError(e.message || "Errore nel caricamento atleti.");
@@ -29,11 +34,11 @@ export default function AdminAthletes({ workouts }) {
 
   useEffect(() => { load(); }, []);
 
-  const handleAssign = async (athleteId, workoutId) => {
+  const handleAssign = async (athleteId, planId) => {
     setBusyId(athleteId);
     try {
-      await api.assignWorkout(athleteId, workoutId || null);
-      setAthletes((prev) => prev.map((a) => (a.id === athleteId ? { ...a, assigned_workout_id: workoutId || null } : a)));
+      await api.assignPlan(athleteId, planId || null);
+      setAthletes((prev) => prev.map((a) => (a.id === athleteId ? { ...a, assigned_plan_id: planId || null, current_session_position: 0 } : a)));
     } catch (e) {
       setError(e.message || "Assegnazione non riuscita.");
     } finally {
@@ -46,7 +51,7 @@ export default function AdminAthletes({ workouts }) {
       <div style={S.sectionRow}>
         <div>
           <h2 style={S.h2}>Atleti</h2>
-          <p style={S.muted}>Invita nuovi atleti e assegna loro un allenamento in base al questionario</p>
+          <p style={S.muted}>Invita nuovi atleti e assegna loro un piano in base al questionario</p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button style={S.ghostBtn} onClick={load}><RefreshCw size={14} /> Aggiorna</button>
@@ -61,6 +66,7 @@ export default function AdminAthletes({ workouts }) {
       <div style={S.athleteList}>
         {athletes.map((a) => {
           const q = a.questionnaire;
+          const expanded = expandedId === a.id;
           return (
             <div key={a.id} style={S.athleteCard}>
               <div style={S.athleteHead}>
@@ -68,8 +74,8 @@ export default function AdminAthletes({ workouts }) {
                   <div style={S.athleteName}>{a.full_name || "Senza nome"}</div>
                   <div style={S.athleteEmail}>{a.email}</div>
                 </div>
-                <span style={{ ...S.badge, ...(a.assigned_workout_id ? S.badgeAssigned : S.badgeWaiting) }}>
-                  {a.assigned_workout_id ? "Allenamento assegnato" : "In attesa"}
+                <span style={{ ...S.badge, ...(a.assigned_plan_id ? S.badgeAssigned : S.badgeWaiting) }}>
+                  {a.assigned_plan_id ? `Sessione ${(a.current_session_position || 0) + 1}` : "In attesa"}
                 </span>
               </div>
 
@@ -87,25 +93,113 @@ export default function AdminAthletes({ workouts }) {
               {q?.notes && <p style={{ ...S.muted, marginBottom: 12 }}>Note: {q.notes}</p>}
 
               <div style={S.assignRow}>
-                <span style={S.miniLbl}>Allenamento assegnato</span>
+                <span style={S.miniLbl}>Piano assegnato</span>
                 <select
                   style={{ ...S.fieldSelect, width: "auto", minWidth: 200 }}
-                  value={a.assigned_workout_id || ""}
+                  value={a.assigned_plan_id || ""}
                   disabled={busyId === a.id}
                   onChange={(e) => handleAssign(a.id, e.target.value)}
                 >
                   <option value="">— nessuno —</option>
-                  {workouts.map((w) => (
-                    <option key={w.id} value={w.id}>{w.name}</option>
+                  {plans.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
                 </select>
+                <button style={S.ghostBtn} onClick={() => setExpandedId(expanded ? null : a.id)}>
+                  {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />} Massimali &amp; storico
+                </button>
               </div>
+
+              {expanded && <AthleteDetail athleteId={a.id} />}
             </div>
           );
         })}
       </div>
 
       {inviting && <InviteModal onClose={() => setInviting(false)} onInvited={load} />}
+    </div>
+  );
+}
+
+// massimali (per calcolare le percentuali della Forza) + ultimi log annotati
+// dall'atleta (rep AMRAP, livelli di carico) — utile per decidere le
+// percentuali/carichi della prossima sessione da costruire.
+function AthleteDetail({ athleteId }) {
+  const [maxes, setMaxes] = useState([]);
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [newKey, setNewKey] = useState("");
+  const [newMax, setNewMax] = useState("");
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [m, l] = await Promise.all([api.getAthleteMaxes(athleteId), api.getExerciseLogs(athleteId, 10)]);
+      setMaxes(m);
+      setLogs(l);
+      setError("");
+    } catch (e) {
+      setError(e.message || "Errore nel caricamento dettagli.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, [athleteId]);
+
+  const saveExistingMax = async (liftKey, kg) => {
+    if (!kg) return;
+    try { await api.setAthleteMax(athleteId, liftKey, +kg); load(); }
+    catch (e) { setError(e.message || "Salvataggio massimale non riuscito."); }
+  };
+
+  const addMax = async () => {
+    if (!newKey.trim() || !newMax) return;
+    try {
+      await api.setAthleteMax(athleteId, newKey.trim(), +newMax);
+      setNewKey(""); setNewMax("");
+      load();
+    } catch (e) {
+      setError(e.message || "Salvataggio massimale non riuscito.");
+    }
+  };
+
+  return (
+    <div style={{ background: "#0f0f0f", border: "1px solid #222", borderRadius: 10, padding: 14, marginTop: 10 }}>
+      {error && <p style={S.authError}>{error}</p>}
+      {loading ? (
+        <p style={S.muted}>Caricamento…</p>
+      ) : (
+        <>
+          <div style={S.blockLabel}>MASSIMALI</div>
+          {maxes.length === 0 && <p style={S.muted}>Nessun massimale impostato.</p>}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "8px 0 12px" }}>
+            {maxes.map((m) => (
+              <div key={m.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, fontSize: 13 }}>
+                <span style={S.qValue}>{m.lift_key}</span>
+                <input type="number" defaultValue={m.max_kg} style={{ ...S.numInputSm, marginTop: 0 }}
+                  onBlur={(e) => saveExistingMax(m.lift_key, e.target.value)} />
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input style={S.fieldInput} placeholder="chiave (es. back_squat)" value={newKey} onChange={(e) => setNewKey(e.target.value)} />
+            <input type="number" style={{ ...S.fieldInput, maxWidth: 90 }} placeholder="kg" value={newMax} onChange={(e) => setNewMax(e.target.value)} />
+            <button style={S.iconBtn} onClick={addMax}><Plus size={15} /></button>
+          </div>
+
+          <div style={{ ...S.blockLabel, marginTop: 16 }}>ULTIMI LOG</div>
+          {logs.length === 0 && <p style={S.muted}>Nessuna annotazione ancora.</p>}
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
+            {logs.map((l) => (
+              <div key={l.id} style={{ fontSize: 12.5, color: "#ccc" }}>
+                {new Date(l.logged_at).toLocaleDateString("it-IT")} · {l.exercise_name} — {l.reps != null ? `${l.reps} rep` : l.load_label}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

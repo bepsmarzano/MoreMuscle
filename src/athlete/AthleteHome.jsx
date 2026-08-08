@@ -7,15 +7,17 @@ import { useAuth } from "../auth/AuthProvider.jsx";
 import * as api from "../lib/api.js";
 
 // ---------------------------------------------------------------------------
-// Home atleta: questionario non compilato -> Questionnaire; compilato ma
-// nessun allenamento assegnato -> schermata d'attesa; altrimenti l'allenamento
-// assegnato, con Preview/Player riusati identici dal modulo player.
+// Home atleta: questionario non compilato -> Questionnaire; nessun piano
+// assegnato -> schermata d'attesa; piano finito -> messaggio di
+// completamento; altrimenti la PROSSIMA sessione (assemblata al volo da
+// api.getCurrentSession), con Preview/Player riusati identici dal modulo
+// player. A fine sessione si avanza automaticamente alla successiva.
 // ---------------------------------------------------------------------------
 export default function AthleteHome() {
-  const { profile, signOut } = useAuth();
+  const { profile, signOut, refreshProfile } = useAuth();
   const [questionnaire, setQuestionnaire] = useState(undefined); // undefined = in caricamento, null = non compilato
-  const [workout, setWorkout] = useState(null);
-  const [loadingWorkout, setLoadingWorkout] = useState(false);
+  const [session, setSession] = useState(undefined); // undefined = in caricamento, null = nessun piano, {done:true} = piano finito
+  const [maxes, setMaxes] = useState({});
   const [editingQuestionnaire, setEditingQuestionnaire] = useState(false);
   const [view, setView] = useState("preview"); // preview | play
   const [error, setError] = useState("");
@@ -34,21 +36,41 @@ export default function AthleteHome() {
   }, [profile.id]);
 
   useEffect(() => {
-    if (!profile.assigned_workout_id) { setWorkout(null); return; }
+    if (!profile.assigned_plan_id) { setSession(null); return; }
     let alive = true;
-    setLoadingWorkout(true);
+    setSession(undefined);
     (async () => {
       try {
-        const w = await api.getAssignedWorkout(profile.assigned_workout_id);
-        if (alive) setWorkout(w);
+        const [s, athleteMaxes] = await Promise.all([api.getCurrentSession(profile), api.getAthleteMaxes(profile.id)]);
+        if (!alive) return;
+        setSession(s);
+        setMaxes(Object.fromEntries(athleteMaxes.map((m) => [m.lift_key, m.max_kg])));
       } catch (e) {
         if (alive) setError(e.message || "Errore nel caricamento dell'allenamento.");
-      } finally {
-        if (alive) setLoadingWorkout(false);
       }
     })();
     return () => { alive = false; };
-  }, [profile.assigned_workout_id]);
+  }, [profile.assigned_plan_id, profile.current_session_position]);
+
+  const handleLog = ({ exerciseName, reps, loadLabel }) => {
+    api.logExerciseSet({
+      athleteId: profile.id,
+      planId: profile.assigned_plan_id,
+      sessionPosition: profile.current_session_position,
+      exerciseName, reps, loadLabel,
+    }).catch((e) => setError(e.message));
+  };
+
+  const handleFinish = async () => {
+    try {
+      await api.completeCurrentSession();
+      setSession(undefined); // evita di mostrare per un istante la sessione appena conclusa
+      await refreshProfile(); // aggiorna current_session_position -> l'effetto sopra ricarica la sessione successiva
+      setView("preview");
+    } catch (e) {
+      setError(e.message || "Impossibile completare la sessione.");
+    }
+  };
 
   const header = (
     <header style={S.header}>
@@ -63,7 +85,7 @@ export default function AthleteHome() {
     </header>
   );
 
-  if (questionnaire === undefined) {
+  if (questionnaire === undefined || session === undefined) {
     return (
       <div style={S.app}>
         <style>{globalCss}</style>
@@ -92,8 +114,8 @@ export default function AthleteHome() {
     );
   }
 
-  if (view === "play" && workout) {
-    return <Player workout={workout} onExit={() => setView("preview")} />;
+  if (view === "play" && session && !session.done) {
+    return <Player workout={session} onExit={() => setView("preview")} onLog={handleLog} onFinish={handleFinish} maxesByLiftKey={maxes} />;
   }
 
   return (
@@ -102,19 +124,25 @@ export default function AthleteHome() {
       {header}
       <main style={S.main}>
         {error && <p style={S.authError}>{error}</p>}
-        {loadingWorkout && <p style={S.muted}>Caricamento allenamento…</p>}
 
-        {!loadingWorkout && !workout && (
+        {!session && (
           <div style={S.waitCard}>
             <div style={S.startTitle}>Ci siamo quasi 💪</div>
-            <p style={S.startMeta}>Il tuo questionario è stato inviato. Ti assegneremo a breve l'allenamento giusto per te.</p>
+            <p style={S.startMeta}>Il tuo questionario è stato inviato. Ti assegneremo a breve il tuo piano di allenamento.</p>
             <button style={S.ghostBtn} onClick={() => setEditingQuestionnaire(true)}><Edit3 size={14} /> Modifica questionario</button>
           </div>
         )}
 
-        {!loadingWorkout && workout && (
+        {session?.done && (
+          <div style={S.waitCard}>
+            <div style={S.startTitle}>Piano completato 🎉</div>
+            <p style={S.startMeta}>Hai portato a termine tutte le {session.totalSessions} sessioni del tuo piano. Parla con il tuo coach per il prossimo.</p>
+          </div>
+        )}
+
+        {session && !session.done && (
           <>
-            <Preview workout={workout} onStart={() => setView("play")} />
+            <Preview workout={session} onStart={() => setView("play")} />
             <div style={{ marginTop: 20, textAlign: "center" }}>
               <button style={S.ghostBtn} onClick={() => setEditingQuestionnaire(true)}><Edit3 size={14} /> Modifica questionario</button>
             </div>

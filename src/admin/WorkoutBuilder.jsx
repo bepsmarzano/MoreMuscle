@@ -1,20 +1,21 @@
 import { useState, useEffect } from "react";
-import { Play, Plus, Trash2, Edit3, ChevronLeft, Clock, Dumbbell, X, ListChecks, Library, Search, Check, Upload, Users, LogOut } from "lucide-react";
+import { Plus, Trash2, Edit3, Dumbbell, X, Library, Search, Check, Upload, Users, LogOut, Flame, Repeat, CalendarRange } from "lucide-react";
 import { S, globalCss, ExGif, uid } from "../shared/ui.jsx";
-import { Preview, Player } from "../player/WorkoutPlayer.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import AdminAthletes from "./AdminAthletes.jsx";
+import PlanBuilder from "./PlanBuilder.jsx";
+import WarmupLibrary from "./WarmupLibrary.jsx";
+import StrengthPrograms from "./StrengthPrograms.jsx";
+import CircuitPrograms from "./CircuitPrograms.jsx";
 import * as api from "../lib/api.js";
 
 // ---------------------------------------------------------------------------
-// Pannello admin: costruzione libreria esercizi + allenamenti (praticamente
-// identico all'app originale, ma i dati vengono da Supabase invece che da
-// localStorage) + tab "Atleti" per invitare e assegnare gli allenamenti.
+// Guscio admin: header + navigazione tra le sezioni. Gestisce solo la
+// Libreria esercizi qui dentro; Riscaldamenti/Forza/Circuiti/Piani/Atleti
+// vivono nei rispettivi moduli, tutti condividono la `library` caricata qui.
 // ---------------------------------------------------------------------------
 
-// un esercizio dentro un allenamento referenzia la libreria via libId,
-// ma tiene una copia di name/gif (snapshot) + reps/time specifici
-const fromLib = (l) => ({ id: uid(), libId: l.id, name: l.name, gif: l.gif, reps: l.defReps, time: l.defTime });
+export const EQUIPMENT_LABELS = { bodyweight: "Corpo libero", db1: "1 manubrio", db2: "2 manubri", kb: "Kettlebell" };
 
 // ---- Import libreria da CSV (es. esportato da Google Sheet) ---------------
 // formato righe: Nome,GIF[,Rep,Tempo] — l'header (se presente) viene ignorato
@@ -67,7 +68,7 @@ function mergeLibraryImport(library, items) {
       next[i] = { ...cur, gif: it.gif || cur.gif, defReps: it.reps ?? cur.defReps, defTime: it.time ?? cur.defTime };
       updated++;
     } else {
-      const created = { id: uid(), name: it.name, gif: it.gif, defReps: it.reps ?? 12, defTime: it.time ?? 40 };
+      const created = { id: uid(), name: it.name, gif: it.gif, defReps: it.reps ?? 12, defTime: it.time ?? 40, equipment: "bodyweight" };
       next.push(created);
       indexByName.set(key, next.length - 1);
       added++;
@@ -79,22 +80,17 @@ function mergeLibraryImport(library, items) {
 // ===========================================================================
 export default function WorkoutBuilder() {
   const { profile, signOut } = useAuth();
-  const [section, setSection] = useState("workouts"); // workouts | athletes
+  const [section, setSection] = useState("library"); // library | warmups | strength | circuits | plans | athletes
   const [library, setLibrary] = useState([]);
-  const [workouts, setWorkouts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [view, setView] = useState("home"); // home | library | edit | preview | play
-  const [activeId, setActiveId] = useState(null);
 
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        const [lib, wks] = await Promise.all([api.getLibrary(), api.listWorkouts()]);
-        if (!alive) return;
-        setLibrary(lib);
-        setWorkouts(wks);
+        const lib = await api.getLibrary();
+        if (alive) setLibrary(lib);
       } catch (e) {
         if (alive) setError(e.message || "Errore nel caricamento dati.");
       } finally {
@@ -104,28 +100,9 @@ export default function WorkoutBuilder() {
     return () => { alive = false; };
   }, []);
 
-  const active = workouts.find((w) => w.id === activeId) || null;
-
   const persistLibrary = async (next) => {
     setLibrary(next); // aggiornamento ottimistico, coerente con l'UX di prima
     try { await api.saveLibrary(next); } catch (e) { setError(e.message || "Salvataggio libreria non riuscito."); }
-  };
-
-  const upsertWorkout = async (w) => {
-    setWorkouts((prev) => {
-      const i = prev.findIndex((x) => x.id === w.id);
-      if (i === -1) return [...prev, w];
-      const copy = [...prev]; copy[i] = w; return copy;
-    });
-    try {
-      const saved = await api.saveWorkout(w);
-      setWorkouts((prev) => prev.map((x) => (x.id === saved.id ? saved : x)));
-    } catch (e) { setError(e.message || "Salvataggio allenamento non riuscito."); }
-  };
-
-  const removeWorkout = async (id) => {
-    setWorkouts((prev) => prev.filter((w) => w.id !== id));
-    try { await api.deleteWorkout(id); } catch (e) { setError(e.message || "Eliminazione non riuscita."); }
   };
 
   if (loading) {
@@ -136,6 +113,15 @@ export default function WorkoutBuilder() {
       </div>
     );
   }
+
+  const tabs = [
+    { key: "library", label: "Libreria", icon: Library },
+    { key: "warmups", label: "Riscaldamenti", icon: Flame },
+    { key: "strength", label: "Forza", icon: Dumbbell },
+    { key: "circuits", label: "Circuiti", icon: Repeat },
+    { key: "plans", label: "Piani", icon: CalendarRange },
+    { key: "athletes", label: "Atleti", icon: Users },
+  ];
 
   return (
     <div style={S.app}>
@@ -149,80 +135,24 @@ export default function WorkoutBuilder() {
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {section === "workouts" && view !== "home" && (
-            <button style={S.ghostBtn} onClick={() => setView("home")}><ChevronLeft size={16} /> Home</button>
-          )}
-          {section === "workouts" && view === "home" && (
-            <button style={S.ghostBtn} onClick={() => setView("library")}><Library size={15} /> Libreria</button>
-          )}
-          <button style={{ ...S.navTab, ...(section === "workouts" ? S.navTabActive : {}) }} onClick={() => { setSection("workouts"); setView("home"); }}>
-            <ListChecks size={14} /> Allenamenti
-          </button>
-          <button style={{ ...S.navTab, ...(section === "athletes" ? S.navTabActive : {}) }} onClick={() => setSection("athletes")}>
-            <Users size={14} /> Atleti
-          </button>
+          {tabs.map((t) => (
+            <button key={t.key} style={{ ...S.navTab, ...(section === t.key ? S.navTabActive : {}) }} onClick={() => setSection(t.key)}>
+              <t.icon size={14} /> {t.label}
+            </button>
+          ))}
           <button style={S.ghostBtn} onClick={signOut}><LogOut size={15} /> Esci</button>
         </div>
       </header>
 
       <main style={S.main}>
         {error && <p style={S.authError}>{error}</p>}
-        {section === "athletes" ? (
-          <AdminAthletes workouts={workouts} />
-        ) : (
-          <>
-            {view === "home" && (
-              <Home workouts={workouts}
-                onNew={() => {
-                  const w = { id: api.newWorkoutId(), name: "Nuovo allenamento", restBetweenBlocks: 120, blocks: [{ id: uid(), exercises: [], rounds: 1 }, { id: uid(), exercises: [], rounds: 1 }] };
-                  upsertWorkout(w); setActiveId(w.id); setView("edit");
-                }}
-                onEdit={(id) => { setActiveId(id); setView("edit"); }}
-                onStart={(id) => { setActiveId(id); setView("preview"); }}
-                onDelete={removeWorkout} />
-            )}
-            {view === "library" && <LibraryView library={library} setLibrary={persistLibrary} />}
-            {view === "edit" && active && <Editor workout={active} onChange={upsertWorkout} onDone={() => setView("home")} library={library} />}
-            {view === "preview" && active && <Preview workout={active} onStart={() => setView("play")} onBack={() => setView("home")} />}
-            {view === "play" && active && <Player workout={active} onExit={() => setView("preview")} />}
-          </>
-        )}
+        {section === "library" && <LibraryView library={library} setLibrary={persistLibrary} />}
+        {section === "warmups" && <WarmupLibrary library={library} />}
+        {section === "strength" && <StrengthPrograms library={library} />}
+        {section === "circuits" && <CircuitPrograms library={library} />}
+        {section === "plans" && <PlanBuilder />}
+        {section === "athletes" && <AdminAthletes />}
       </main>
-    </div>
-  );
-}
-
-// ---- HOME ------------------------------------------------------------------
-function Home({ workouts, onNew, onEdit, onStart, onDelete }) {
-  return (
-    <div>
-      <div style={S.sectionRow}>
-        <h2 style={S.h2}>I tuoi allenamenti</h2>
-        <button style={S.primaryBtn} onClick={onNew}><Plus size={16} /> Crea</button>
-      </div>
-      {workouts.length === 0 && <p style={S.muted}>Nessun allenamento. Creane uno.</p>}
-      <div style={S.cardGrid}>
-        {workouts.map((w) => {
-          const exCount = w.blocks.reduce((a, b) => a + b.exercises.length * Math.max(1, b.rounds || 1), 0);
-          const totalTime = w.blocks.reduce((a, b) => a + b.exercises.reduce((s, e) => s + e.time, 0) * Math.max(1, b.rounds || 1), 0) + (w.blocks.length - 1) * w.restBetweenBlocks;
-          return (
-            <div key={w.id} style={S.card}>
-              <div style={{ flex: 1 }}>
-                <div style={S.cardTitle}>{w.name}</div>
-                <div style={S.cardMeta}>
-                  <span><ListChecks size={13} /> {w.blocks.length} blocchi · {exCount} esercizi</span>
-                  <span><Clock size={13} /> ~{Math.round(totalTime / 60)} min</span>
-                </div>
-              </div>
-              <div style={S.cardActions}>
-                <button style={S.primaryBtn} onClick={() => onStart(w.id)}><Play size={15} /> Avvia</button>
-                <button style={S.iconBtn} title="Modifica" onClick={() => onEdit(w.id)}><Edit3 size={15} /></button>
-                <button style={S.iconBtn} title="Elimina" onClick={() => onDelete(w.id)}><Trash2 size={15} /></button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }
@@ -248,11 +178,11 @@ function LibraryView({ library, setLibrary }) {
       <div style={S.sectionRow}>
         <div>
           <h2 style={S.h2}>Libreria esercizi</h2>
-          <p style={S.muted}>Crea gli esercizi una volta, poi riusali negli allenamenti</p>
+          <p style={S.muted}>Crea gli esercizi una volta, poi riusali in riscaldamenti/forza/circuiti</p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button style={S.ghostBtn} onClick={() => setImporting(true)}><Upload size={15} /> Importa</button>
-          <button style={S.primaryBtn} onClick={() => setEditing({ id: uid(), name: "", gif: "", defReps: 10, defTime: 40, _new: true })}>
+          <button style={S.primaryBtn} onClick={() => setEditing({ id: uid(), name: "", gif: "", defReps: 10, defTime: 40, equipment: "bodyweight", _new: true })}>
             <Plus size={16} /> Nuovo
           </button>
         </div>
@@ -392,113 +322,15 @@ function ExerciseEditor({ ex, onSave, onCancel }) {
             <input type="number" style={S.fieldInput} value={f.defTime} onChange={(e) => set({ defTime: Math.max(1, +e.target.value || 1) })} />
           </div>
         </div>
+        <label style={S.fieldLbl}>Attrezzatura</label>
+        <select style={S.fieldSelect} value={f.equipment || "bodyweight"} onChange={(e) => set({ equipment: e.target.value })}>
+          {Object.entries(EQUIPMENT_LABELS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+        </select>
+        <p style={{ ...S.muted, marginTop: 4 }}>Se non è a corpo libero, nel Circuito verrà chiesto all'atleta il livello di carico usato.</p>
         <button style={{ ...S.primaryBtn, width: "100%", justifyContent: "center", marginTop: 16 }}
           onClick={() => f.name.trim() && onSave({ ...f, _new: undefined })}>
           <Check size={16} /> Salva
         </button>
-      </div>
-    </div>
-  );
-}
-
-// ---- EDITOR ALLENAMENTO ----------------------------------------------------
-function Editor({ workout, onChange, onDone, library }) {
-  const [picker, setPicker] = useState(null); // blockIndex per cui aprire il picker
-  const set = (patch) => onChange({ ...workout, ...patch });
-  const setBlockPatch = (bi, patch) => set({ blocks: workout.blocks.map((b, i) => (i === bi ? { ...b, ...patch } : b)) });
-  const setBlock = (bi, exercises) => setBlockPatch(bi, { exercises });
-
-  const addFromLib = (bi, libEx) => setBlock(bi, [...workout.blocks[bi].exercises, fromLib(libEx)]);
-  const updateExercise = (bi, ei, patch) => setBlock(bi, workout.blocks[bi].exercises.map((e, i) => (i === ei ? { ...e, ...patch } : e)));
-  const removeExercise = (bi, ei) => setBlock(bi, workout.blocks[bi].exercises.filter((_, i) => i !== ei));
-  const addBlock = () => set({ blocks: [...workout.blocks, { id: uid(), exercises: [], rounds: 1 }] });
-  const removeBlock = (bi) => set({ blocks: workout.blocks.filter((_, i) => i !== bi) });
-
-  return (
-    <div>
-      <div style={S.sectionRow}>
-        <input style={S.titleInput} value={workout.name} onChange={(e) => set({ name: e.target.value })} />
-        <button style={S.primaryBtn} onClick={onDone}>Salva</button>
-      </div>
-
-      <div style={S.restRow}>
-        <Clock size={15} />
-        <span>Riposo tra i blocchi</span>
-        <input type="number" style={S.numInput} value={workout.restBetweenBlocks}
-          onChange={(e) => set({ restBetweenBlocks: Math.max(0, +e.target.value || 0) })} />
-        <span style={S.muted}>secondi</span>
-      </div>
-
-      {workout.blocks.map((block, bi) => (
-        <div key={block.id} style={S.blockCard}>
-          <div style={S.blockHead}>
-            <span style={S.blockLabel}>BLOCCO {bi + 1}</span>
-            <label style={S.miniLbl}>round
-              <input type="number" min={1} style={S.numInputSm} value={block.rounds || 1}
-                onChange={(e) => setBlockPatch(bi, { rounds: Math.max(1, +e.target.value || 1) })} />
-            </label>
-            <span style={S.muted}>{block.exercises.length} esercizi</span>
-            {workout.blocks.length > 1 && <button style={S.iconBtn} onClick={() => removeBlock(bi)}><Trash2 size={14} /></button>}
-          </div>
-
-          {block.exercises.map((ex, ei) => (
-            <div key={ex.id} style={S.exRow}>
-              <ExGif src={ex.gif} alt="" style={S.exThumb} />
-              <div style={S.exFields}>
-                <div style={S.exNameStatic}>{ex.name}</div>
-                <div style={S.exNums}>
-                  <label style={S.miniLbl}>rep
-                    <input type="number" style={S.numInputSm} value={ex.reps} onChange={(e) => updateExercise(bi, ei, { reps: +e.target.value || 0 })} />
-                  </label>
-                  <label style={S.miniLbl}>tempo (s)
-                    <input type="number" style={S.numInputSm} value={ex.time} onChange={(e) => updateExercise(bi, ei, { time: Math.max(1, +e.target.value || 1) })} />
-                  </label>
-                </div>
-              </div>
-              <button style={S.iconBtn} onClick={() => removeExercise(bi, ei)}><X size={15} /></button>
-            </div>
-          ))}
-
-          <button style={S.dashedBtn} onClick={() => setPicker(bi)}><Library size={14} /> Aggiungi dalla libreria</button>
-        </div>
-      ))}
-
-      <button style={S.dashedBtn} onClick={addBlock}><Plus size={14} /> Aggiungi blocco</button>
-
-      {picker !== null && (
-        <LibraryPicker library={library} onPick={(libEx) => addFromLib(picker, libEx)} onClose={() => setPicker(null)} />
-      )}
-    </div>
-  );
-}
-
-function LibraryPicker({ library, onPick, onClose }) {
-  const [q, setQ] = useState("");
-  const filtered = library.filter((e) => e.name.toLowerCase().includes(q.toLowerCase()));
-  return (
-    <div style={S.modalWrap} onClick={onClose}>
-      <div style={S.modal} onClick={(e) => e.stopPropagation()}>
-        <div style={S.modalHead}>
-          <span style={S.modalTitle}>Scegli dalla libreria</span>
-          <button style={S.iconBtnSm} onClick={onClose}><X size={15} /></button>
-        </div>
-        <div style={{ ...S.searchRow, marginBottom: 12 }}>
-          <Search size={16} color="#777" />
-          <input style={S.searchInput} placeholder="Cerca…" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
-        </div>
-        <div style={S.pickerList}>
-          {filtered.map((ex) => (
-            <button key={ex.id} style={S.pickerItem} onClick={() => { onPick(ex); onClose(); }}>
-              <ExGif src={ex.gif} alt="" style={S.pickerThumb} />
-              <div style={{ flex: 1, textAlign: "left" }}>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>{ex.name}</div>
-                <div style={{ fontSize: 12, color: "#888" }}>{ex.defReps > 1 ? `${ex.defReps} rep` : "hold"} · {ex.defTime}s</div>
-              </div>
-              <Plus size={16} color="#C1FF72" />
-            </button>
-          ))}
-          {filtered.length === 0 && <p style={{ ...S.muted, textAlign: "center", padding: 20 }}>Nessun esercizio. Aggiungilo prima in Libreria.</p>}
-        </div>
       </div>
     </div>
   );
