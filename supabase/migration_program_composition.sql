@@ -5,6 +5,12 @@
 -- Da qui in poi una "sessione" non è più una riga workouts: si assembla al
 -- volo da tre librerie riusabili (riscaldamenti in rotazione, un programma
 -- Forza, un programma Circuito), tutte referenziate da un piano.
+--
+-- Nota d'ordine: le tabelle si creano prima (senza la policy "athlete_select",
+-- che dipende da colonne di `plans` che non esistono ancora); poi si
+-- aggiungono quelle colonne a `plans` (che a sua volta dipendono dalle
+-- tabelle appena create, da cui la doppia dipendenza va sciolta in due
+-- passaggi); infine si creano le policy "athlete_select".
 
 -- ---------------------------------------------------------------------------
 -- warmup_blocks: routine di riscaldamento riusabili (stessa forma di un
@@ -22,11 +28,6 @@ create table public.warmup_blocks (
 alter table public.warmup_blocks enable row level security;
 create policy "warmup_blocks_admin_all" on public.warmup_blocks
   for all using (public.is_admin()) with check (public.is_admin());
-create policy "warmup_blocks_athlete_select" on public.warmup_blocks
-  for select using (exists (
-    select 1 from public.profiles p join public.plans pl on pl.id = p.assigned_plan_id
-    where p.id = auth.uid() and warmup_blocks.id = any(pl.warmup_block_ids)
-  ));
 
 -- ---------------------------------------------------------------------------
 -- strength_programs / circuit_programs: sequenza ORDINATA di sessioni
@@ -42,11 +43,6 @@ create table public.strength_programs (
 alter table public.strength_programs enable row level security;
 create policy "strength_programs_admin_all" on public.strength_programs
   for all using (public.is_admin()) with check (public.is_admin());
-create policy "strength_programs_athlete_select" on public.strength_programs
-  for select using (exists (
-    select 1 from public.profiles p join public.plans pl on pl.id = p.assigned_plan_id
-    where p.id = auth.uid() and pl.strength_program_id = strength_programs.id
-  ));
 
 create table public.circuit_programs (
   id uuid primary key default gen_random_uuid(),
@@ -58,20 +54,33 @@ create table public.circuit_programs (
 alter table public.circuit_programs enable row level security;
 create policy "circuit_programs_admin_all" on public.circuit_programs
   for all using (public.is_admin()) with check (public.is_admin());
-create policy "circuit_programs_athlete_select" on public.circuit_programs
-  for select using (exists (
-    select 1 from public.profiles p join public.plans pl on pl.id = p.assigned_plan_id
-    where p.id = auth.uid() and pl.circuit_program_id = circuit_programs.id
-  ));
 
 -- ---------------------------------------------------------------------------
 -- plans: si arricchisce per comporre le tre librerie, non referenzia più
--- plan_sessions/workouts.
+-- plan_sessions/workouts. Le tabelle sopra esistono già, quindi le FK sono ok.
 -- ---------------------------------------------------------------------------
 alter table public.plans add column warmup_block_ids uuid[] not null default '{}'; -- ordine = ordine di rotazione
 alter table public.plans add column strength_program_id uuid references public.strength_programs(id) on delete set null;
 alter table public.plans add column circuit_program_id uuid references public.circuit_programs(id) on delete set null;
 alter table public.plans add column rest_between_blocks int not null default 120;
+
+-- ora che le colonne di plans esistono, le policy "athlete_select" possono
+-- referenziarle senza errori
+create policy "warmup_blocks_athlete_select" on public.warmup_blocks
+  for select using (exists (
+    select 1 from public.profiles p join public.plans pl on pl.id = p.assigned_plan_id
+    where p.id = auth.uid() and warmup_blocks.id = any(pl.warmup_block_ids)
+  ));
+create policy "strength_programs_athlete_select" on public.strength_programs
+  for select using (exists (
+    select 1 from public.profiles p join public.plans pl on pl.id = p.assigned_plan_id
+    where p.id = auth.uid() and pl.strength_program_id = strength_programs.id
+  ));
+create policy "circuit_programs_athlete_select" on public.circuit_programs
+  for select using (exists (
+    select 1 from public.profiles p join public.plans pl on pl.id = p.assigned_plan_id
+    where p.id = auth.uid() and pl.circuit_program_id = circuit_programs.id
+  ));
 
 -- le sessioni non sono più righe plan_sessions: non serve più la tabella
 drop policy if exists "plan_sessions_athlete_select" on public.plan_sessions;
