@@ -20,13 +20,26 @@ export function buildSequence(w) {
   return steps;
 }
 
+// Sintesi vocale del browser (Web Speech API). Un contatore "generazione"
+// invalida qualunque utterance precedente ancora in corso quando arriva un
+// nuovo annuncio: quando cancel() interrompe un'utterance con onend
+// agganciato, molti browser sparano comunque "end" per quella interrotta, e
+// senza questo controllo l'annuncio vecchio continua a parlare
+// sovrapponendosi/ripetendo quello nuovo.
 function useSpeech(enabled) {
+  const genRef = useRef(0);
+
   return useCallback((text) => {
-    if (!enabled || typeof window === "undefined" || !window.speechSynthesis) return;
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = "it-IT"; u.rate = 1;
+    if (!enabled || !text || typeof window === "undefined" || !window.speechSynthesis) return;
+    const myGen = ++genRef.current;
     window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(u);
+    setTimeout(() => {
+      if (myGen !== genRef.current) return; // superata da un annuncio più recente
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = "it-IT";
+      u.rate = 0.95;
+      window.speechSynthesis.speak(u);
+    }, 30);
   }, [enabled]);
 }
 
@@ -90,7 +103,7 @@ export function Player({ workout, onExit }) {
 
   const start = () => {
     setStarted(true); setRunning(true);
-    speak("Sta per iniziare il tuo more muscle.");
+    speak("Let's go!");
     setTimeout(() => announceStep(0), 2200);
   };
 

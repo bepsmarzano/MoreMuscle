@@ -35,10 +35,10 @@ Gli atleti **non si autoregistrano**: li inviti tu dal pannello Atleti (email + 
 - **Libreria esercizi** — crei ogni esercizio una volta (nome, URL GIF, rep e tempo di default) e lo riusi. Importabile anche da CSV/Google Sheet (pulsante "Importa" in Libreria).
 - **Editor allenamento** — 2+ blocchi da 4-5 esercizi, riposo configurabile tra i blocchi. Gli esercizi si pescano dalla libreria; rep/tempo si possono sovrascrivere per il singolo allenamento.
 - **Anteprima** — griglia di tutti gli esercizi prima di iniziare.
-- **Player** — a schermo intero, GIF di sfondo, countdown circolare in sovrimpressione, controlli play/pausa/avanti/indietro, annunci vocali in italiano (Web Speech API):
-  - inizio → "sta per iniziare il tuo more muscle"
+- **Player** — a schermo intero, GIF di sfondo, countdown circolare in sovrimpressione, controlli play/pausa/avanti/indietro, annunci vocali (Web Speech API del browser):
+  - inizio → "Let's go!"
   - 10s prima del cambio → "mancano 10 secondi"
-  - nuovo esercizio → "[nome]. Fai X ripetizioni"
+  - nuovo esercizio → "[nome esercizio, in inglese]. Fai X ripetizioni"
   - riposo tra blocchi e messaggio finale
 
 ## Struttura del codice
@@ -51,7 +51,7 @@ src/
   athlete/    Questionnaire + AthleteHome
   auth/       AuthProvider (sessione+ruolo), LoginScreen, SetPassword
 api/
-  invite-athlete.js   funzione serverless Vercel: unico posto che usa la service role key
+  invite-athlete.js   funzione serverless Vercel: invita un atleta via email (service role key)
 supabase/
   schema.sql          da eseguire manualmente nel SQL Editor di Supabase
 ```
@@ -71,5 +71,5 @@ Per testare l'invito in locale senza deployare: `vercel dev` (richiede `vercel l
 
 ## Note
 - Le GIF sono URL esterni (Google Drive/Photos funzionano ma a volte falliscono in modo transitorio: l'app riprova un paio di volte prima di mostrare un placeholder — vedi `ExGif` in `src/shared/ui.jsx`).
-- La voce usa la sintesi del browser: su iOS parte solo dopo un tap dell'utente (il pulsante "Sta per iniziare" va bene).
+- La voce usa la sintesi del browser (Web Speech API): su iOS parte solo dopo un tap dell'utente (il pulsante "Sta per iniziare" va bene).
 - Niente storico: un atleta ha un solo allenamento assegnato alla volta (`profiles.assigned_workout_id`), sovrascrivibile dall'admin. Stessa scelta per l'appuntamento di vendita, che resta fuori dall'app.
