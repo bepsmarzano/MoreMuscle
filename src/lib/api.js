@@ -100,6 +100,15 @@ export async function deleteCircuitProgram(id) {
   if (error) throw error;
 }
 
+// una sessione di un Programma Circuito ha 2 blocchi standard (con riposo a
+// cronometro tra i due, come tra qualunque blocco di primo livello — vedi
+// buildSequence in WorkoutPlayer.jsx). Tollera anche la vecchia forma "un
+// blocco solo" (sessioni create prima di questa modifica).
+export function circuitSessionToBlocks(session) {
+  const blocks = session?.blocks || [{ exercises: session?.exercises || [], rounds: session?.rounds || 1 }];
+  return blocks.map((b) => ({ exercises: b.exercises || [], rounds: b.rounds || 1 }));
+}
+
 // ---- piani (admin) ------------------------------------------------------------
 // un piano compone: riscaldamenti in rotazione + 1 programma Forza + 1
 // programma Circuito + riposo tra blocchi. Le sessioni si assemblano al volo
@@ -275,7 +284,7 @@ export async function getCurrentSession(profile) {
   const blocks = [];
   if (warmup) blocks.push({ id: `warmup-${i}`, type: "standard", exercises: warmup.exercises, rounds: warmup.rounds });
   blocks.push({ id: `strength-${i}`, type: "strength", ...strengthSessions[i] });
-  blocks.push({ id: `circuit-${i}`, type: "standard", ...circuitSessions[i] });
+  circuitSessionToBlocks(circuitSessions[i]).forEach((b, bj) => blocks.push({ id: `circuit-${i}-${bj}`, type: "standard", ...b }));
 
   return {
     id: `${plan.id}:${i}`,

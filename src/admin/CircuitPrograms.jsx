@@ -84,13 +84,17 @@ export default function CircuitPrograms({ library }) {
   );
 }
 
+// tollera anche la vecchia forma "un blocco solo" (sessioni create prima
+// dell'introduzione dei 2 blocchi per sessione)
+const sessionBlocks = (s) => s.blocks || [{ exercises: s.exercises || [], rounds: s.rounds || 1 }, { exercises: [], rounds: 1 }];
+
 function ProgramEditor({ program, library, onSave, onCancel }) {
   const [name, setName] = useState(program.name);
   const [sessions, setSessions] = useState(program.sessions);
   const [openIndex, setOpenIndex] = useState(sessions.length ? 0 : null);
 
   const addSession = () => {
-    setSessions((prev) => [...prev, { exercises: [], rounds: 1 }]);
+    setSessions((prev) => [...prev, { blocks: [{ exercises: [], rounds: 1 }, { exercises: [], rounds: 1 }] }]);
     setOpenIndex(sessions.length);
   };
   const duplicateSession = (i) => {
@@ -115,7 +119,11 @@ function ProgramEditor({ program, library, onSave, onCancel }) {
     });
     setOpenIndex((oi) => (oi === i ? i + dir : oi === i + dir ? i : oi));
   };
-  const patchSession = (i, patch) => setSessions((prev) => prev.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
+  const patchSessionBlock = (i, bj, patch) => setSessions((prev) => prev.map((s, idx) => {
+    if (idx !== i) return s;
+    const blocks = sessionBlocks(s).map((b, k) => (k === bj ? { ...b, ...patch } : b));
+    return { blocks };
+  }));
 
   return (
     <div style={S.modalWrap} onClick={onCancel}>
@@ -128,20 +136,29 @@ function ProgramEditor({ program, library, onSave, onCancel }) {
         <input style={S.fieldInput} value={name} onChange={(e) => setName(e.target.value)} placeholder="Es. Circuito full body — 8 settimane" />
 
         <div style={{ ...S.blockLabel, marginTop: 16, marginBottom: 8, display: "block" }}>SESSIONI ({sessions.length})</div>
-        {sessions.map((s, i) => (
-          <div key={i} style={S.blockCard}>
-            <div style={S.blockHead}>
-              <span style={S.blockLabel}>SESSIONE {i + 1}</span>
-              <span style={S.muted}>{(s.exercises || []).length} esercizi</span>
-              <button style={S.iconBtnSm} onClick={() => move(i, -1)} disabled={i === 0}><ChevronUp size={14} /></button>
-              <button style={S.iconBtnSm} onClick={() => move(i, 1)} disabled={i === sessions.length - 1}><ChevronDown size={14} /></button>
-              <button style={S.iconBtnSm} title="Duplica" onClick={() => duplicateSession(i)}><Copy size={14} /></button>
-              <button style={S.iconBtn} onClick={() => removeSession(i)}><Trash2 size={14} /></button>
-              <button style={S.ghostBtn} onClick={() => setOpenIndex(openIndex === i ? null : i)}>{openIndex === i ? "Chiudi" : "Modifica"}</button>
+        {sessions.map((s, i) => {
+          const blocks = sessionBlocks(s);
+          const totalEx = blocks.reduce((a, b) => a + (b.exercises || []).length, 0);
+          return (
+            <div key={i} style={S.blockCard}>
+              <div style={S.blockHead}>
+                <span style={S.blockLabel}>SESSIONE {i + 1}</span>
+                <span style={S.muted}>{totalEx} esercizi su {blocks.length} blocchi</span>
+                <button style={S.iconBtnSm} onClick={() => move(i, -1)} disabled={i === 0}><ChevronUp size={14} /></button>
+                <button style={S.iconBtnSm} onClick={() => move(i, 1)} disabled={i === sessions.length - 1}><ChevronDown size={14} /></button>
+                <button style={S.iconBtnSm} title="Duplica" onClick={() => duplicateSession(i)}><Copy size={14} /></button>
+                <button style={S.iconBtn} onClick={() => removeSession(i)}><Trash2 size={14} /></button>
+                <button style={S.ghostBtn} onClick={() => setOpenIndex(openIndex === i ? null : i)}>{openIndex === i ? "Chiudi" : "Modifica"}</button>
+              </div>
+              {openIndex === i && blocks.map((b, bj) => (
+                <div key={bj} style={{ marginTop: bj > 0 ? 16 : 0, paddingTop: bj > 0 ? 14 : 0, borderTop: bj > 0 ? "1px solid #232323" : "none" }}>
+                  <div style={{ ...S.blockLabel, marginBottom: 8 }}>BLOCCO {bj + 1}{bj > 0 ? " · riposo a cronometro dal blocco precedente" : ""}</div>
+                  <StandardBlockEditor block={b} onPatch={(patch) => patchSessionBlock(i, bj, patch)} library={library} />
+                </div>
+              ))}
             </div>
-            {openIndex === i && <StandardBlockEditor block={s} onPatch={(patch) => patchSession(i, patch)} library={library} />}
-          </div>
-        ))}
+          );
+        })}
         <button style={S.dashedBtn} onClick={addSession}><Plus size={14} /> Aggiungi sessione</button>
 
         <button style={{ ...S.primaryBtn, width: "100%", justifyContent: "center", marginTop: 16 }}

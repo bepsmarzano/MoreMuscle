@@ -25,7 +25,7 @@ export function buildSequence(w, maxesByLiftKey = {}) {
       warmup.forEach((set, i) => {
         steps.push({
           type: "strength", phase: "warmup", setIndex: i + 1, totalSets: warmup.length,
-          amrap: false, percent: null, note: set.note || null, kg: null, blockIndex: bi,
+          percent: null, note: set.note || null, kg: null, blockIndex: bi,
           ex: { name: block.exerciseName, gif: block.exerciseGif, reps: set.reps, time: set.time },
         });
       });
@@ -33,7 +33,7 @@ export function buildSequence(w, maxesByLiftKey = {}) {
         const kg = max && set.percent != null ? Math.round((max * set.percent) / 100) : null;
         steps.push({
           type: "strength", phase: "work", setIndex: i + 1, totalSets: work.length,
-          amrap: !!set.amrap, percent: set.percent ?? null, note: null, kg, blockIndex: bi,
+          percent: set.percent ?? null, note: null, kg, blockIndex: bi,
           ex: { name: block.exerciseName, gif: block.exerciseGif, reps: set.reps, time: set.time },
         });
       });
@@ -48,11 +48,12 @@ export function buildSequence(w, maxesByLiftKey = {}) {
   return steps;
 }
 
-// una serie AMRAP di Forza (rep da annotare) o un esercizio a manubri/kettlebell
-// del Circuito (livello di carico da annotare) chiedono un'annotazione a fine step
+// "0 rep" = Max (standard o Forza, stessa convenzione: vedi blockEditors.jsx)
+// chiede all'atleta quante ne ha fatte davvero; un esercizio a manubri/
+// kettlebell/bilanciere del Circuito chiede il livello di carico usato.
 function needsLog(step) {
   if (!step || step.type === "rest") return null;
-  if (step.type === "strength" && step.amrap) return { kind: "reps" };
+  if (step.ex && step.ex.reps === 0) return { kind: "reps" };
   if (step.type === "exercise" && step.ex.equipment && step.ex.equipment !== "bodyweight") return { kind: "load" };
   return null;
 }
@@ -117,7 +118,7 @@ export function Preview({ workout, onStart, onBack }) {
                   <ExGif src={ex.gif} alt={ex.name} style={S.previewImg} />
                   <div style={S.previewInfo}>
                     <div style={S.previewName}>{ex.name}</div>
-                    <div style={S.previewMeta}>{ex.reps > 1 ? `${ex.reps} rep` : "hold"} · {ex.time}s</div>
+                    <div style={S.previewMeta}>{ex.reps === 0 ? "Max" : ex.reps > 1 ? `${ex.reps} rep` : "hold"} · {ex.time}s</div>
                   </div>
                 </div>
               ))}
@@ -160,11 +161,12 @@ export function Player({ workout, onExit, onLog, onFinish, maxesByLiftKey = {} }
       const parts = [s.ex.name];
       parts.push(s.phase === "warmup" ? (s.note ? `Riscaldamento, ${s.note}.` : "Riscaldamento.") : `Serie ${s.setIndex} di ${s.totalSets}.`);
       if (s.percent != null) parts.push(`${s.percent} percento${s.kg != null ? `, ${s.kg} chili.` : "."}`);
-      parts.push(s.amrap ? "Massime ripetizioni possibili." : (s.ex.reps > 1 ? `Fai ${s.ex.reps} ripetizioni.` : ""));
+      parts.push(s.ex.reps === 0 ? "Massime ripetizioni possibili." : (s.ex.reps > 1 ? `Fai ${s.ex.reps} ripetizioni.` : ""));
       speak(parts.filter(Boolean).join(" "));
       return;
     }
-    speak(`${s.ex.name}. ${s.ex.reps > 1 ? `Fai ${s.ex.reps} ripetizioni.` : "Mantieni la posizione."}`);
+    const tail = s.ex.reps === 0 ? "Fai il massimo numero di ripetizioni possibile." : s.ex.reps > 1 ? `Fai ${s.ex.reps} ripetizioni.` : "Mantieni la posizione.";
+    speak(`${s.ex.name}. ${tail}`);
   }, [sequence, speak]);
 
   const start = () => {
@@ -315,13 +317,13 @@ export function Player({ workout, onExit, onLog, onFinish, maxesByLiftKey = {} }
             ) : isStrength ? (
               <div style={S.exStageReps}>
                 {[
-                  step.amrap ? "Max rep" : (step.ex.reps > 1 ? `${step.ex.reps} rep` : ""),
+                  step.ex.reps === 0 ? "Max rep" : (step.ex.reps > 1 ? `${step.ex.reps} rep` : ""),
                   step.percent != null ? `${step.percent}%${step.kg != null ? ` (~${step.kg}kg)` : ""}` : null,
                   step.note || null,
                 ].filter(Boolean).join(" · ")}
               </div>
             ) : (
-              <div style={S.exStageReps}>{step.ex.reps > 1 ? `Fai ${step.ex.reps} rep` : "Mantieni la posizione"}</div>
+              <div style={S.exStageReps}>{step.ex.reps === 0 ? "Fai il massimo numero di rep" : step.ex.reps > 1 ? `Fai ${step.ex.reps} rep` : "Mantieni la posizione"}</div>
             )}
           </div>
         </div>

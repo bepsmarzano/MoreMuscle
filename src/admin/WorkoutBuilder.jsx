@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Plus, Trash2, Edit3, Dumbbell, X, Library, Search, Check, Upload, Users, LogOut, Flame, Repeat, CalendarRange } from "lucide-react";
-import { S, globalCss, ExGif, uid } from "../shared/ui.jsx";
+import { S, globalCss, ExGif, uid, EQUIPMENT_LABELS } from "../shared/ui.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import AdminAthletes from "./AdminAthletes.jsx";
 import PlanBuilder from "./PlanBuilder.jsx";
@@ -14,8 +14,6 @@ import * as api from "../lib/api.js";
 // Libreria esercizi qui dentro; Riscaldamenti/Forza/Circuiti/Piani/Atleti
 // vivono nei rispettivi moduli, tutti condividono la `library` caricata qui.
 // ---------------------------------------------------------------------------
-
-export const EQUIPMENT_LABELS = { bodyweight: "Corpo libero", db1: "1 manubrio", db2: "2 manubri", kb: "Kettlebell" };
 
 // ---- Import libreria da CSV (es. esportato da Google Sheet) ---------------
 // formato righe: Nome,GIF[,Rep,Tempo] — l'header (se presente) viene ignorato

@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { Plus, Trash2, X, Library, Search } from "lucide-react";
-import { S, ExGif, uid } from "../shared/ui.jsx";
+import { S, ExGif, uid, EQUIPMENT_LABELS } from "../shared/ui.jsx";
+
+// "0 rep" significa "Max" (massime ripetizioni possibili, annotate
+// dall'atleta a fine step) — un'unica convenzione ovunque si entrano le rep,
+// niente checkbox/flag separati da tenere sincronizzati.
+const repsLabel = (reps) => (reps === 0 ? "Max" : reps > 1 ? `${reps} rep` : "hold");
 
 // ---------------------------------------------------------------------------
 // Editor di contenuto condivisi tra Riscaldamenti (WarmupLibrary), Programmi
@@ -33,7 +38,7 @@ export function LibraryPicker({ library, onPick, onClose }) {
               <ExGif src={ex.gif} alt="" style={S.pickerThumb} />
               <div style={{ flex: 1, textAlign: "left" }}>
                 <div style={{ fontWeight: 600, fontSize: 14 }}>{ex.name}</div>
-                <div style={{ fontSize: 12, color: "#888" }}>{ex.defReps > 1 ? `${ex.defReps} rep` : "hold"} · {ex.defTime}s</div>
+                <div style={{ fontSize: 12, color: "#888" }}>{repsLabel(ex.defReps)} · {ex.defTime}s</div>
               </div>
               <Plus size={16} color="#C1FF72" />
             </button>
@@ -69,11 +74,17 @@ export function StandardBlockEditor({ block, onPatch, library }) {
           <div style={S.exFields}>
             <div style={S.exNameStatic}>{ex.name}</div>
             <div style={S.exNums}>
-              <label style={S.miniLbl}>rep
-                <input type="number" style={S.numInputSm} value={ex.reps} onChange={(e) => updateExercise(ei, { reps: +e.target.value || 0 })} />
+              <label style={S.miniLbl}>rep (0=max)
+                <input type="number" min={0} style={S.numInputSm} value={ex.reps} onChange={(e) => updateExercise(ei, { reps: +e.target.value || 0 })} />
               </label>
               <label style={S.miniLbl}>tempo (s)
                 <input type="number" style={S.numInputSm} value={ex.time} onChange={(e) => updateExercise(ei, { time: Math.max(1, +e.target.value || 1) })} />
+              </label>
+              <label style={S.miniLbl}>peso
+                <select style={{ ...S.numInputSm, width: "auto" }} value={ex.equipment || "bodyweight"}
+                  onChange={(e) => updateExercise(ei, { equipment: e.target.value })}>
+                  {Object.entries(EQUIPMENT_LABELS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+                </select>
               </label>
             </div>
           </div>
@@ -103,7 +114,7 @@ export function StrengthBlockEditor({ block, onPatch, library }) {
   const removeWarmup = (i) => onPatch({ warmupSets: warmup.filter((_, idx) => idx !== i) });
 
   const updateWork = (i, patch) => onPatch({ workSets: work.map((s, idx) => (idx === i ? { ...s, ...patch } : s)) });
-  const addWork = () => onPatch({ workSets: [...work, { reps: 5, percent: 70, time: 180, amrap: false }] });
+  const addWork = () => onPatch({ workSets: [...work, { reps: 5, percent: 70, time: 180 }] });
   const removeWork = (i) => onPatch({ workSets: work.filter((_, idx) => idx !== i) });
 
   return (
@@ -147,9 +158,8 @@ export function StrengthBlockEditor({ block, onPatch, library }) {
         <div key={i} style={S.exRow}>
           <div style={S.exFields}>
             <div style={S.exNums}>
-              <label style={S.miniLbl}>rep
-                <input type="number" style={S.numInputSm} value={s.amrap ? "" : (s.reps ?? "")} disabled={s.amrap}
-                  placeholder={s.amrap ? "max" : ""} onChange={(e) => updateWork(i, { reps: +e.target.value || 0 })} />
+              <label style={S.miniLbl}>rep (0=max)
+                <input type="number" min={0} style={S.numInputSm} value={s.reps ?? 0} onChange={(e) => updateWork(i, { reps: +e.target.value || 0 })} />
               </label>
               <label style={S.miniLbl}>% massimale
                 <input type="number" style={S.numInputSm} value={s.percent ?? ""} onChange={(e) => updateWork(i, { percent: +e.target.value || 0 })} />
@@ -158,11 +168,7 @@ export function StrengthBlockEditor({ block, onPatch, library }) {
                 <input type="number" style={S.numInputSm} value={s.time} onChange={(e) => updateWork(i, { time: Math.max(1, +e.target.value || 1) })} />
               </label>
             </div>
-            <label style={{ ...S.miniLbl, display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
-              <input type="checkbox" checked={!!s.amrap}
-                onChange={(e) => updateWork(i, { amrap: e.target.checked, reps: e.target.checked ? null : (s.reps || 5) })} />
-              Max ripetizioni (AMRAP) — l'atleta annota quante ne ha fatte
-            </label>
+            {s.reps === 0 && <p style={{ ...S.muted, marginTop: 6 }}>Serie AMRAP: l'atleta annota quante rep ha fatto davvero.</p>}
           </div>
           <button style={S.iconBtn} onClick={() => removeWork(i)}><X size={15} /></button>
         </div>

@@ -138,7 +138,7 @@ function PlanEditor({ plan, warmups, strengthPrograms, circuitPrograms, onSave, 
     const blocks = [];
     if (warmup) blocks.push({ id: "w", type: "standard", exercises: warmup.exercises, rounds: warmup.rounds });
     blocks.push({ id: "f", type: "strength", ...strengthProgram.sessions[testIndex] });
-    blocks.push({ id: "c", type: "standard", ...circuitProgram.sessions[testIndex] });
+    api.circuitSessionToBlocks(circuitProgram.sessions[testIndex]).forEach((b, bj) => blocks.push({ id: `c${bj}`, type: "standard", ...b }));
     setTestWorkout({ id: "test", name: `Prova sessione ${testIndex + 1}`, restBetweenBlocks, blocks });
   };
 
