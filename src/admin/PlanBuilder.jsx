@@ -194,7 +194,17 @@ function PlanEditor({ plan, warmups, strengthPrograms, circuitPrograms, onSave, 
 
         <div style={{ marginTop: 16, padding: 12, background: "#0f0f0f", border: "1px solid #222", borderRadius: 10 }}>
           <div style={{ fontSize: 13, color: "#ccc" }}>
-            {totalSessions > 0 ? `${totalSessions} sessioni totali` : "Scegli entrambi i programmi per vedere il totale sessioni"}
+            {!strengthProgram || !circuitProgram ? (
+              "Scegli sia un Programma Forza sia un Programma Circuito per vedere il totale sessioni."
+            ) : totalSessions > 0 ? (
+              `${totalSessions} sessioni totali`
+            ) : (
+              <span style={{ color: "#f0b155" }}>
+                {strengthProgram.sessions.length === 0 && "Il Programma Forza scelto non ha ancora sessioni. "}
+                {circuitProgram.sessions.length === 0 && "Il Programma Circuito scelto non ha ancora sessioni. "}
+                Aggiungine almeno una nella tab del programma (pulsante "Aggiungi sessione").
+              </span>
+            )}
           </div>
           {lengthMismatch && (
             <div style={{ fontSize: 12.5, color: "#f0b155", marginTop: 6 }}>

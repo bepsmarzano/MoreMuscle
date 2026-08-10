@@ -8,7 +8,7 @@ export const uid = () => Math.random().toString(36).slice(2, 9);
 
 // attrezzatura di un esercizio: determina se/come il Circuito chiede
 // all'atleta il livello di carico usato (bodyweight = mai chiesto)
-export const EQUIPMENT_LABELS = { bodyweight: "Corpo libero", db1: "1 manubrio", db2: "2 manubri", kb: "Kettlebell", bb: "Bilanciere" };
+export const EQUIPMENT_LABELS = { bodyweight: "Corpo libero", db1: "1 manubrio", db2: "2 manubri", kb: "Kettlebell", bb: "Bilanciere", band: "Elastico" };
 
 export const PLACEHOLDER_GIF =
   "data:image/svg+xml;utf8," +
