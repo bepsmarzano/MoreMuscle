@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Dumbbell, LogIn } from "lucide-react";
+import { LogIn } from "lucide-react";
 import { S, globalCss } from "../shared/ui.jsx";
 import { supabase } from "../lib/supabaseClient.js";
 
@@ -22,7 +22,7 @@ export default function LoginScreen() {
       <style>{globalCss}</style>
       <div style={S.authWrap}>
         <form style={S.authCard} onSubmit={submit}>
-          <div style={S.logoMarkBig}><Dumbbell size={26} /></div>
+          <img src="/logo.png" alt="Viltrum Fitness" style={S.logoImgBig} />
           <div style={S.authTitle}>MORE MUSCLE</div>
           <p style={S.authSub}>Accedi per continuare</p>
 

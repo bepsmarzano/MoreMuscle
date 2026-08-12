@@ -10,6 +10,11 @@ export const uid = () => Math.random().toString(36).slice(2, 9);
 // all'atleta il livello di carico usato (bodyweight = mai chiesto)
 export const EQUIPMENT_LABELS = { bodyweight: "Corpo libero", db1: "1 manubrio", db2: "2 manubri", kb: "Kettlebell", bb: "Bilanciere", band: "Elastico" };
 
+// font dei nomi esercizio (condensato, bold, tutto maiuscolo): Gotham
+// Condensed Bold è un font commerciale, non incorporabile gratuitamente —
+// Oswald è la sua alternativa libera più diffusa, caricata in index.html.
+export const EXERCISE_NAME_FONT = { fontFamily: '"Oswald", "Arial Narrow", sans-serif', fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.3 };
+
 export const PLACEHOLDER_GIF =
   "data:image/svg+xml;utf8," +
   encodeURIComponent(
@@ -52,8 +57,11 @@ button:disabled { opacity: .3; cursor: not-allowed; }
 export const S = {
   app: { minHeight: "100vh", background: "#0d0d0d", color: "#f2f2f2", fontFamily: "system-ui, -apple-system, sans-serif" },
   header: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderBottom: "1px solid #1f1f1f", position: "sticky", top: 0, background: "#0d0d0d", zIndex: 10 },
-  logoMark: { width: 34, height: 34, borderRadius: 9, background: "#C1FF72", display: "grid", placeItems: "center", color: "#0d0d0d" },
-  logoMarkBig: { width: 60, height: 60, borderRadius: 16, background: "#C1FF72", display: "grid", placeItems: "center", color: "#0d0d0d", margin: "0 auto 14px" },
+  // logo Viltrum Fitness (public/logo.png): simbolo quadrato (non un
+  // wordmark) — "small" nell'header, accanto al nome scritto a parte;
+  // "big" nelle schermate di apertura (login, pagina iniziale, avvio Player).
+  logoImgSmall: { width: 36, height: 36, objectFit: "cover", borderRadius: 9, display: "block", flexShrink: 0 },
+  logoImgBig: { width: 64, height: 64, objectFit: "cover", borderRadius: 16, display: "block", margin: "0 auto 14px" },
   logoText: { fontWeight: 800, letterSpacing: 1, fontSize: 15 },
   logoSub: { fontSize: 11, color: "#888", letterSpacing: .5 },
   main: { maxWidth: 760, margin: "0 auto", padding: "22px 18px 60px" },
@@ -80,7 +88,7 @@ export const S = {
   libCard: { display: "flex", alignItems: "center", gap: 10, background: "#151515", border: "1px solid #232323", borderRadius: 12, padding: 10 },
   libImg: { width: 52, height: 52, objectFit: "cover", borderRadius: 8, background: "#000", flexShrink: 0 },
   libInfo: { flex: 1, minWidth: 0 },
-  libName: { fontWeight: 600, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
+  libName: { ...EXERCISE_NAME_FONT, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
   libMeta: { fontSize: 12, color: "#888" },
   libActions: { display: "flex", gap: 6 },
 
@@ -108,7 +116,7 @@ export const S = {
   exRow: { display: "flex", gap: 12, alignItems: "center", background: "#0f0f0f", border: "1px solid #222", borderRadius: 10, padding: 10, marginBottom: 10 },
   exThumb: { width: 56, height: 56, objectFit: "cover", borderRadius: 8, background: "#000", flexShrink: 0 },
   exFields: { flex: 1, display: "flex", flexDirection: "column", gap: 6 },
-  exNameStatic: { fontWeight: 600, fontSize: 15 },
+  exNameStatic: { ...EXERCISE_NAME_FONT, fontSize: 15 },
   exNums: { display: "flex", gap: 14 },
   miniLbl: { fontSize: 11, color: "#888", fontWeight: 600 },
 
@@ -117,11 +125,15 @@ export const S = {
   previewCard: { background: "#151515", border: "1px solid #232323", borderRadius: 12, overflow: "hidden" },
   previewImg: { width: "100%", height: 120, objectFit: "cover", background: "#000", display: "block" },
   previewInfo: { padding: "10px 12px" },
-  previewName: { fontWeight: 600, fontSize: 14, marginBottom: 3 },
+  previewName: { ...EXERCISE_NAME_FONT, fontSize: 14, marginBottom: 3 },
   previewMeta: { fontSize: 12, color: "#888" },
   restPill: { display: "inline-flex", alignItems: "center", gap: 6, marginTop: 12, background: "#12233b", color: "#7fb0ff", border: "1px solid #234", padding: "7px 14px", borderRadius: 20, fontSize: 12.5, fontWeight: 600 },
 
-  playerFull: { position: "fixed", inset: 0, background: "#000", zIndex: 200, display: "grid", placeItems: "center", overflow: "hidden" },
+  // è un overlay a schermo intero fuori da S.app: senza queste due righe non
+  // eredita colore/font di default e il testo senza un color proprio (es.
+  // startTitle) cade sul nero/serif di default del browser, illeggibile sul
+  // fondo scuro — vedi startCard più sotto.
+  playerFull: { position: "fixed", inset: 0, background: "#000", zIndex: 200, display: "grid", placeItems: "center", overflow: "hidden", color: "#f2f2f2", fontFamily: "system-ui, -apple-system, sans-serif" },
   startCard: { background: "#151515", border: "1px solid #232323", borderRadius: 18, padding: "40px 28px", width: "min(92vw, 420px)", textAlign: "center" },
   startTitle: { fontSize: 24, fontWeight: 800, marginBottom: 6 },
   startMeta: { color: "#888", fontSize: 14, marginBottom: 26 },
@@ -142,7 +154,7 @@ export const S = {
   stageNameRow: { textAlign: "center", padding: "0 12px" },
   stageTimerRow: { display: "flex", alignItems: "center", gap: 14 },
   exBlockTag: { fontWeight: 800, fontSize: 12, letterSpacing: 1.5, color: "#0d0d0d", background: "rgba(193,255,114,.9)", padding: "5px 12px", borderRadius: 20 },
-  exStageName: { fontSize: "clamp(22px, 6vw, 34px)", fontWeight: 800, color: "#fff", textShadow: "0 2px 16px rgba(0,0,0,.85)", lineHeight: 1.15 },
+  exStageName: { ...EXERCISE_NAME_FONT, fontSize: "clamp(22px, 6vw, 34px)", color: "#fff", textShadow: "0 2px 16px rgba(0,0,0,.85)", lineHeight: 1.15 },
   exStageReps: { fontSize: 16, color: "#C1FF72", fontWeight: 700, textShadow: "0 2px 10px rgba(0,0,0,.85)" },
   restBig: { fontSize: "clamp(28px, 8vw, 42px)", fontWeight: 900, letterSpacing: 3, color: "#7fb0ff", textShadow: "0 2px 16px rgba(0,0,0,.85)" },
   restSub: { color: "#cdddf5", fontSize: 15, textShadow: "0 2px 10px rgba(0,0,0,.85)" },
@@ -171,6 +183,13 @@ export const S = {
   navTabs: { display: "flex", gap: 8 },
   navTab: { display: "inline-flex", alignItems: "center", gap: 6, background: "transparent", color: "#bbb", border: "1px solid #333", padding: "7px 12px", borderRadius: 8, fontSize: 13 },
   navTabActive: { background: "#C1FF72", color: "#0d0d0d", border: "1px solid #C1FF72" },
+
+  // ---- pagina iniziale atleta (dopo il login, prima di questionario/menu) ----
+  landingHero: { background: "#151515", border: "1px solid #232323", borderRadius: 18, padding: "36px 24px", textAlign: "center", marginBottom: 16 },
+  landingTitle: { fontSize: 22, fontWeight: 800, marginBottom: 20 },
+  instructionsCard: { background: "#101820", border: "1px solid #1f2e3a", borderRadius: 14, padding: "16px 18px", marginBottom: 16 },
+  instructionsText: { color: "#bcd3e8", fontSize: 13.5, lineHeight: 1.5, whiteSpace: "pre-wrap", margin: "6px 0 0" },
+  whatsappBtn: { display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: "#25D366", color: "#0d0d0d", border: "none", padding: "13px 22px", borderRadius: 12, fontWeight: 700, fontSize: 15, textDecoration: "none", width: "100%" },
 
   athleteList: { display: "flex", flexDirection: "column", gap: 10 },
   athleteCard: { background: "#151515", border: "1px solid #232323", borderRadius: 13, padding: "16px 18px" },

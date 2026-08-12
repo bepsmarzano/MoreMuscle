@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
-import { Plus, Trash2, Edit3, Dumbbell, X, Library, Search, Check, Upload, Users, LogOut, Flame, Repeat, CalendarRange } from "lucide-react";
+import { Plus, Trash2, Edit3, Dumbbell, X, Library, Search, Check, Upload, Users, LogOut, Flame, Repeat, Settings } from "lucide-react";
 import { S, globalCss, ExGif, uid, EQUIPMENT_LABELS } from "../shared/ui.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import AdminAthletes from "./AdminAthletes.jsx";
-import PlanBuilder from "./PlanBuilder.jsx";
-import WarmupLibrary from "./WarmupLibrary.jsx";
+import WarmupPrograms from "./WarmupPrograms.jsx";
 import StrengthPrograms from "./StrengthPrograms.jsx";
 import CircuitPrograms from "./CircuitPrograms.jsx";
+import AppSettings from "./AppSettings.jsx";
 import * as api from "../lib/api.js";
 
 // ---------------------------------------------------------------------------
@@ -78,7 +78,7 @@ function mergeLibraryImport(library, items) {
 // ===========================================================================
 export default function WorkoutBuilder() {
   const { profile, signOut } = useAuth();
-  const [section, setSection] = useState("library"); // library | warmups | strength | circuits | plans | athletes
+  const [section, setSection] = useState("library"); // library | warmups | strength | circuits | athletes | settings
   const [library, setLibrary] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -117,8 +117,8 @@ export default function WorkoutBuilder() {
     { key: "warmups", label: "Riscaldamenti", icon: Flame },
     { key: "strength", label: "Forza", icon: Dumbbell },
     { key: "circuits", label: "Circuiti", icon: Repeat },
-    { key: "plans", label: "Piani", icon: CalendarRange },
     { key: "athletes", label: "Atleti", icon: Users },
+    { key: "settings", label: "Impostazioni", icon: Settings },
   ];
 
   return (
@@ -126,7 +126,7 @@ export default function WorkoutBuilder() {
       <style>{globalCss}</style>
       <header style={S.header}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={S.logoMark}><Dumbbell size={18} /></div>
+          <img src="/logo.png" alt="Viltrum Fitness" style={S.logoImgSmall} />
           <div>
             <div style={S.logoText}>MORE MUSCLE</div>
             <div style={S.logoSub}>{profile?.full_name || profile?.email}</div>
@@ -145,11 +145,11 @@ export default function WorkoutBuilder() {
       <main style={S.main}>
         {error && <p style={S.authError}>{error}</p>}
         {section === "library" && <LibraryView library={library} setLibrary={persistLibrary} />}
-        {section === "warmups" && <WarmupLibrary library={library} />}
+        {section === "warmups" && <WarmupPrograms library={library} />}
         {section === "strength" && <StrengthPrograms library={library} />}
         {section === "circuits" && <CircuitPrograms library={library} />}
-        {section === "plans" && <PlanBuilder />}
         {section === "athletes" && <AdminAthletes />}
+        {section === "settings" && <AppSettings />}
       </main>
     </div>
   );

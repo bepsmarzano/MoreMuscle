@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Dumbbell, KeyRound } from "lucide-react";
+import { KeyRound } from "lucide-react";
 import { S, globalCss } from "../shared/ui.jsx";
 import { supabase } from "../lib/supabaseClient.js";
 
@@ -34,7 +34,7 @@ export default function SetPassword() {
       <style>{globalCss}</style>
       <div style={S.authWrap}>
         <form style={S.authCard} onSubmit={submit}>
-          <div style={S.logoMarkBig}><Dumbbell size={26} /></div>
+          <img src="/logo.png" alt="Viltrum Fitness" style={S.logoImgBig} />
           <div style={S.authTitle}>Imposta la password</div>
           <p style={S.authSub}>Benvenuto/a! Scegli una password per accedere al tuo account.</p>
 

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Plus, Trash2, X, Library, Search } from "lucide-react";
-import { S, ExGif, uid, EQUIPMENT_LABELS } from "../shared/ui.jsx";
+import { S, uid, EQUIPMENT_LABELS } from "../shared/ui.jsx";
 
 // "0 rep" significa "Max" (massime ripetizioni possibili, annotate
 // dall'atleta a fine step) — un'unica convenzione ovunque si entrano le rep,
@@ -35,7 +35,6 @@ export function LibraryPicker({ library, onPick, onClose }) {
         <div style={S.pickerList}>
           {filtered.map((ex) => (
             <button key={ex.id} style={S.pickerItem} onClick={() => { onPick(ex); onClose(); }}>
-              <ExGif src={ex.gif} alt="" style={S.pickerThumb} />
               <div style={{ flex: 1, textAlign: "left" }}>
                 <div style={{ fontWeight: 600, fontSize: 14 }}>{ex.name}</div>
                 <div style={{ fontSize: 12, color: "#888" }}>{repsLabel(ex.defReps)} · {ex.defTime}s</div>
@@ -70,7 +69,6 @@ export function StandardBlockEditor({ block, onPatch, library }) {
 
       {exercises.map((ex, ei) => (
         <div key={ex.id} style={S.exRow}>
-          <ExGif src={ex.gif} alt="" style={S.exThumb} />
           <div style={S.exFields}>
             <div style={S.exNameStatic}>{ex.name}</div>
             <div style={S.exNums}>
@@ -119,7 +117,6 @@ export function StrengthBlockEditor({ block, onPatch, library }) {
 
   return (
     <div>
-      <ExGif src={block.exerciseGif} alt="" style={S.modalPreview} />
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 12 }}>
         <div style={{ flex: 1 }}>
           <div style={S.fieldLbl}>Esercizio</div>

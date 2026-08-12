@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Play, Pause, SkipForward, SkipBack, ChevronLeft, Clock, Dumbbell, X, RotateCcw, Volume2, VolumeX, Check } from "lucide-react";
+import { Play, Pause, SkipForward, SkipBack, ChevronLeft, Clock, X, RotateCcw, Volume2, VolumeX, Check, Home } from "lucide-react";
 import { S, ExGif } from "../shared/ui.jsx";
 
 // ---------------------------------------------------------------------------
@@ -136,7 +136,10 @@ export function Preview({ workout, onStart, onBack }) {
 // quando l'atleta annota una serie AMRAP di Forza o il carico usato in un
 // esercizio a manubri/kettlebell del Circuito. maxesByLiftKey: { [liftKey]:
 // kg } dei massimali noti, per calcolare i pesi di lavoro della Forza.
-export function Player({ workout, onExit, onLog, onFinish, maxesByLiftKey = {} }) {
+// onHome (opzionale): torna dritto al menu principale, non solo all'anteprima
+// di questa sezione — un'azione client-side pura, senza chiamate di rete,
+// sempre disponibile anche se il completamento della sessione dovesse fallire.
+export function Player({ workout, onExit, onHome, onLog, onFinish, maxesByLiftKey = {} }) {
   const sequence = useRef(buildSequence(workout, maxesByLiftKey)).current;
   const [idx, setIdx] = useState(0);
   const [remaining, setRemaining] = useState(sequence[0]?.type === "rest" ? 0 : (sequence[0]?.ex?.time ?? 0));
@@ -247,11 +250,14 @@ export function Player({ workout, onExit, onLog, onFinish, maxesByLiftKey = {} }
     return (
       <div style={S.playerFull}>
         <div style={S.startCard}>
-          <div style={S.logoMarkBig}><Dumbbell size={28} /></div>
+          <img src="/logo.png" alt="Viltrum Fitness" style={S.logoImgBig} />
           <div style={S.startTitle}>{workout.name}</div>
           <div style={S.startMeta}>{sequence.filter((s) => s.type === "exercise").length} esercizi · {workout.blocks.length} blocchi</div>
           <button style={S.startBtn} onClick={start}><Play size={20} /> Sta per iniziare</button>
           <button style={S.ghostBtn} onClick={onExit}><ChevronLeft size={16} /> Torna all'anteprima</button>
+          {onHome && (
+            <button style={{ ...S.ghostBtn, marginTop: 10 }} onClick={onHome}><Home size={16} /> Torna alla home</button>
+          )}
         </div>
       </div>
     );
@@ -263,8 +269,17 @@ export function Player({ workout, onExit, onLog, onFinish, maxesByLiftKey = {} }
         <div style={S.startCard}>
           <div style={S.startTitle}>Completato 🔥</div>
           <div style={S.startMeta}>Ottimo lavoro.</div>
-          <button style={S.startBtn} onClick={() => { goTo(0); setRunning(false); }}><RotateCcw size={18} /> Rifai</button>
-          <button style={S.ghostBtn} onClick={onExit}><ChevronLeft size={16} /> Esci</button>
+          {/* "Rifai" solo quando non c'è un onFinish reale da richiamare (es.
+              test admin): nel flusso atleta rieseguire un allenamento già
+              completato non deve essere possibile, e richiamerebbe onFinish
+              un'altra volta avanzando il puntatore a sproposito. */}
+          {!onFinish && (
+            <button style={S.startBtn} onClick={() => { goTo(0); setRunning(false); }}><RotateCcw size={18} /> Rifai</button>
+          )}
+          {/* qui l'azione utile è tornare al menu, non all'anteprima di una
+              sessione appena completata (e già avanzata alla prossima) —
+              onHome se disponibile, altrimenti onExit come prima */}
+          <button style={S.ghostBtn} onClick={onHome || onExit}><Home size={16} /> Torna alla home</button>
         </div>
       </div>
     );

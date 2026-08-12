@@ -5,25 +5,28 @@ import * as api from "../lib/api.js";
 
 // ---------------------------------------------------------------------------
 // Pannello "Atleti": lista atleti invitati con riepilogo questionario,
-// assegnazione del piano (tra quelli creati nella tab Piani), massimali e
-// storico dei log (rep AMRAP / carichi usati) per decidere le sessioni
-// future, e invito di nuovi atleti via email.
+// assegnazione INDIPENDENTE di Riscaldamento (rotazione)/Forza/Circuito per
+// ciascuno, massimali e storico dei log (rep AMRAP / carichi usati), invito
+// di nuovi atleti via email.
 // ---------------------------------------------------------------------------
 export default function AdminAthletes() {
   const [athletes, setAthletes] = useState([]);
-  const [plans, setPlans] = useState([]);
+  const [warmupPrograms, setWarmupPrograms] = useState([]);
+  const [strengthPrograms, setStrengthPrograms] = useState([]);
+  const [circuitPrograms, setCircuitPrograms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [inviting, setInviting] = useState(false);
   const [busyId, setBusyId] = useState(null);
-  const [expandedId, setExpandedId] = useState(null);
+  const [panel, setPanel] = useState({}); // { [athleteId]: "assign" | "detail" | null }
 
   const load = async () => {
     setLoading(true);
     try {
-      const [a, p] = await Promise.all([api.listAthletes(), api.listPlans()]);
-      setAthletes(a);
-      setPlans(p);
+      const [a, wp, sp, cp] = await Promise.all([
+        api.listAthletes(), api.listWarmupPrograms(), api.listStrengthPrograms(), api.listCircuitPrograms(),
+      ]);
+      setAthletes(a); setWarmupPrograms(wp); setStrengthPrograms(sp); setCircuitPrograms(cp);
       setError("");
     } catch (e) {
       setError(e.message || "Errore nel caricamento atleti.");
@@ -34,11 +37,37 @@ export default function AdminAthletes() {
 
   useEffect(() => { load(); }, []);
 
-  const handleAssign = async (athleteId, planId) => {
+  const togglePanel = (athleteId, which) => setPanel((prev) => ({ ...prev, [athleteId]: prev[athleteId] === which ? null : which }));
+
+  const handleAssignWarmup = async (athleteId, programId) => {
     setBusyId(athleteId);
     try {
-      await api.assignPlan(athleteId, planId || null);
-      setAthletes((prev) => prev.map((a) => (a.id === athleteId ? { ...a, assigned_plan_id: planId || null, current_session_position: 0 } : a)));
+      await api.assignWarmupProgram(athleteId, programId || null);
+      setAthletes((prev) => prev.map((a) => (a.id === athleteId ? { ...a, assigned_warmup_program_id: programId || null, warmup_position: 0 } : a)));
+    } catch (e) {
+      setError(e.message || "Assegnazione non riuscita.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleAssignStrength = async (athleteId, programId) => {
+    setBusyId(athleteId);
+    try {
+      await api.assignStrengthProgram(athleteId, programId || null);
+      setAthletes((prev) => prev.map((a) => (a.id === athleteId ? { ...a, assigned_strength_program_id: programId || null, strength_position: 0 } : a)));
+    } catch (e) {
+      setError(e.message || "Assegnazione non riuscita.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleAssignCircuit = async (athleteId, programId) => {
+    setBusyId(athleteId);
+    try {
+      await api.assignCircuitProgram(athleteId, programId || null);
+      setAthletes((prev) => prev.map((a) => (a.id === athleteId ? { ...a, assigned_circuit_program_id: programId || null, circuit_position: 0 } : a)));
     } catch (e) {
       setError(e.message || "Assegnazione non riuscita.");
     } finally {
@@ -51,7 +80,7 @@ export default function AdminAthletes() {
       <div style={S.sectionRow}>
         <div>
           <h2 style={S.h2}>Atleti</h2>
-          <p style={S.muted}>Invita nuovi atleti e assegna loro un piano in base al questionario</p>
+          <p style={S.muted}>Invita nuovi atleti e assegna a ciascuno Riscaldamento, Forza e Circuito separatamente</p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button style={S.ghostBtn} onClick={load}><RefreshCw size={14} /> Aggiorna</button>
@@ -66,7 +95,10 @@ export default function AdminAthletes() {
       <div style={S.athleteList}>
         {athletes.map((a) => {
           const q = a.questionnaire;
-          const expanded = expandedId === a.id;
+          const activePanel = panel[a.id];
+          const warmupProgram = warmupPrograms.find((p) => p.id === a.assigned_warmup_program_id);
+          const strengthProgram = strengthPrograms.find((p) => p.id === a.assigned_strength_program_id);
+          const circuitProgram = circuitPrograms.find((p) => p.id === a.assigned_circuit_program_id);
           return (
             <div key={a.id} style={S.athleteCard}>
               <div style={S.athleteHead}>
@@ -74,9 +106,18 @@ export default function AdminAthletes() {
                   <div style={S.athleteName}>{a.full_name || "Senza nome"}</div>
                   <div style={S.athleteEmail}>{a.email}</div>
                 </div>
-                <span style={{ ...S.badge, ...(a.assigned_plan_id ? S.badgeAssigned : S.badgeWaiting) }}>
-                  {a.assigned_plan_id ? `Sessione ${(a.current_session_position || 0) + 1}` : "In attesa"}
-                </span>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <span style={{ ...S.badge, ...(warmupProgram ? S.badgeAssigned : S.badgeWaiting) }}>
+                    {/* rotazione infinita: la posizione gira in modulo, quindi la mostriamo già ridotta alla sessione corrente */}
+                    Risc. {warmupProgram && warmupProgram.sessions.length ? `${((a.warmup_position || 0) % warmupProgram.sessions.length) + 1}/${warmupProgram.sessions.length}` : "—"}
+                  </span>
+                  <span style={{ ...S.badge, ...(strengthProgram ? S.badgeAssigned : S.badgeWaiting) }}>
+                    Forza {strengthProgram ? `${(a.strength_position || 0) + 1}/${strengthProgram.sessions.length}` : "—"}
+                  </span>
+                  <span style={{ ...S.badge, ...(circuitProgram ? S.badgeAssigned : S.badgeWaiting) }}>
+                    Circuito {circuitProgram ? `${(a.circuit_position || 0) + 1}/${circuitProgram.sessions.length}` : "—"}
+                  </span>
+                </div>
               </div>
 
               {q ? (
@@ -93,24 +134,27 @@ export default function AdminAthletes() {
               {q?.notes && <p style={{ ...S.muted, marginBottom: 12 }}>Note: {q.notes}</p>}
 
               <div style={S.assignRow}>
-                <span style={S.miniLbl}>Piano assegnato</span>
-                <select
-                  style={{ ...S.fieldSelect, width: "auto", minWidth: 200 }}
-                  value={a.assigned_plan_id || ""}
-                  disabled={busyId === a.id}
-                  onChange={(e) => handleAssign(a.id, e.target.value)}
-                >
-                  <option value="">— nessuno —</option>
-                  {plans.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-                <button style={S.ghostBtn} onClick={() => setExpandedId(expanded ? null : a.id)}>
-                  {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />} Massimali &amp; storico
+                <button style={S.ghostBtn} onClick={() => togglePanel(a.id, "assign")}>
+                  {activePanel === "assign" ? <ChevronUp size={14} /> : <ChevronDown size={14} />} Assegna allenamenti
+                </button>
+                <button style={S.ghostBtn} onClick={() => togglePanel(a.id, "detail")}>
+                  {activePanel === "detail" ? <ChevronUp size={14} /> : <ChevronDown size={14} />} Massimali &amp; storico
                 </button>
               </div>
 
-              {expanded && <AthleteDetail athleteId={a.id} />}
+              {activePanel === "assign" && (
+                <AssignSection
+                  athlete={a}
+                  warmupPrograms={warmupPrograms}
+                  strengthPrograms={strengthPrograms}
+                  circuitPrograms={circuitPrograms}
+                  busy={busyId === a.id}
+                  onAssignWarmup={(id) => handleAssignWarmup(a.id, id)}
+                  onAssignStrength={(id) => handleAssignStrength(a.id, id)}
+                  onAssignCircuit={(id) => handleAssignCircuit(a.id, id)}
+                />
+              )}
+              {activePanel === "detail" && <AthleteDetail athleteId={a.id} />}
             </div>
           );
         })}
@@ -121,9 +165,40 @@ export default function AdminAthletes() {
   );
 }
 
+// assegnazione indipendente delle 3 sezioni: stesso pattern per tutte —
+// un solo programma scelto da un menu a tendina (il Riscaldamento ruota
+// all'infinito sulle proprie sessioni una volta assegnato, Forza/Circuito
+// avanzano e si fermano all'ultima).
+function AssignSection({ athlete, warmupPrograms, strengthPrograms, circuitPrograms, busy, onAssignWarmup, onAssignStrength, onAssignCircuit }) {
+  return (
+    <div style={{ background: "#0f0f0f", border: "1px solid #222", borderRadius: 10, padding: 14, marginTop: 10 }}>
+      <div style={S.blockLabel}>PROGRAMMA RISCALDAMENTO</div>
+      <select style={{ ...S.fieldSelect, marginBottom: 14 }} value={athlete.assigned_warmup_program_id || ""} disabled={busy}
+        onChange={(e) => onAssignWarmup(e.target.value)}>
+        <option value="">— nessuno —</option>
+        {warmupPrograms.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.sessions.length} sessioni)</option>)}
+      </select>
+
+      <div style={S.blockLabel}>PROGRAMMA FORZA</div>
+      <select style={{ ...S.fieldSelect, marginBottom: 14 }} value={athlete.assigned_strength_program_id || ""} disabled={busy}
+        onChange={(e) => onAssignStrength(e.target.value)}>
+        <option value="">— nessuno —</option>
+        {strengthPrograms.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.sessions.length} sessioni)</option>)}
+      </select>
+
+      <div style={S.blockLabel}>PROGRAMMA CIRCUITO</div>
+      <select style={S.fieldSelect} value={athlete.assigned_circuit_program_id || ""} disabled={busy}
+        onChange={(e) => onAssignCircuit(e.target.value)}>
+        <option value="">— nessuno —</option>
+        {circuitPrograms.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.sessions.length} sessioni)</option>)}
+      </select>
+    </div>
+  );
+}
+
 // massimali (per calcolare le percentuali della Forza) + ultimi log annotati
 // dall'atleta (rep AMRAP, livelli di carico) — utile per decidere le
-// percentuali/carichi della prossima sessione da costruire.
+// percentuali/carichi delle prossime sessioni da costruire.
 function AthleteDetail({ athleteId }) {
   const [maxes, setMaxes] = useState([]);
   const [logs, setLogs] = useState([]);
