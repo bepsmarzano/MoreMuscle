@@ -102,9 +102,11 @@ export const S = {
 
   searchRow: { display: "flex", alignItems: "center", gap: 8, background: "#151515", border: "1px solid #232323", borderRadius: 10, padding: "9px 14px", marginBottom: 16 },
   searchInput: { flex: 1, background: "transparent", border: "none", color: "#fff", fontSize: 14 },
-  libGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 },
-  libCard: { display: "flex", alignItems: "center", gap: 10, background: "#151515", border: "1px solid #232323", borderRadius: 12, padding: 10 },
-  libImg: { width: 52, height: 52, objectFit: "cover", borderRadius: 8, background: "#000", flexShrink: 0 },
+  // lista (non griglia): niente GIF in anteprima qui — 237 GIF animate
+  // insieme appesantivano il PC. Si vede la GIF solo aprendo la scheda
+  // (click sulla riga), un esercizio alla volta — vedi LibraryView.
+  libGrid: { display: "flex", flexDirection: "column", gap: 8 },
+  libCard: { display: "flex", alignItems: "center", gap: 10, background: "#151515", border: "1px solid #232323", borderRadius: 12, padding: "10px 12px", cursor: "pointer" },
   libInfo: { flex: 1, minWidth: 0 },
   libName: { ...EXERCISE_NAME_FONT, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
   libMeta: { fontSize: 12, color: "#888" },

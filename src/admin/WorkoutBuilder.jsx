@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, Trash2, Edit3, Dumbbell, X, Library, Search, Check, Upload, Users, LogOut, Flame, Repeat, Settings } from "lucide-react";
+import { Plus, Trash2, Dumbbell, X, Library, Search, Check, Upload, Users, LogOut, Flame, Repeat, Settings } from "lucide-react";
 import { S, globalCss, ExGif, uid, EQUIPMENT_LABELS } from "../shared/ui.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import AdminAthletes from "./AdminAthletes.jsx";
@@ -78,7 +78,7 @@ function mergeLibraryImport(library, items) {
 // ===========================================================================
 export default function WorkoutBuilder() {
   const { profile, signOut } = useAuth();
-  const [section, setSection] = useState("library"); // library | warmups | strength | circuits | athletes | settings
+  const [section, setSection] = useState("athletes"); // athletes | warmups | strength | circuits | settings | library
   const [library, setLibrary] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -113,12 +113,12 @@ export default function WorkoutBuilder() {
   }
 
   const tabs = [
-    { key: "library", label: "Libreria", icon: Library },
+    { key: "athletes", label: "Atleti", icon: Users },
     { key: "warmups", label: "Riscaldamenti", icon: Flame },
     { key: "strength", label: "Forza", icon: Dumbbell },
     { key: "circuits", label: "Circuiti", icon: Repeat },
-    { key: "athletes", label: "Atleti", icon: Users },
     { key: "settings", label: "Impostazioni", icon: Settings },
+    { key: "library", label: "Libreria", icon: Library }, // per ultima: è la scheda più pesante (griglia di 237 GIF animate)
   ];
 
   return (
@@ -193,15 +193,13 @@ function LibraryView({ library, setLibrary }) {
 
       <div style={S.libGrid}>
         {filtered.map((ex) => (
-          <div key={ex.id} style={S.libCard}>
-            <ExGif src={ex.gif} alt={ex.name} style={S.libImg} />
+          <div key={ex.id} style={S.libCard} onClick={() => setEditing(ex)}>
             <div style={S.libInfo}>
               <div style={S.libName}>{ex.name || "Senza nome"}</div>
               <div style={S.libMeta}>{ex.defReps > 1 ? `${ex.defReps} rep` : "hold"} · {ex.defTime}s</div>
             </div>
             <div style={S.libActions}>
-              <button style={S.iconBtnSm} onClick={() => setEditing(ex)}><Edit3 size={13} /></button>
-              <button style={S.iconBtnSm} onClick={() => del(ex.id)}><Trash2 size={13} /></button>
+              <button style={S.iconBtnSm} onClick={(e) => { e.stopPropagation(); del(ex.id); }}><Trash2 size={13} /></button>
             </div>
           </div>
         ))}
