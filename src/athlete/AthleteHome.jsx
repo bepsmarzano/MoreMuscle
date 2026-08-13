@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Dumbbell, LogOut, Edit3, Flame, Repeat, SkipForward, ChevronLeft, Play, MessageCircle, Home, User } from "lucide-react";
-import { S, globalCss } from "../shared/ui.jsx";
-import { Preview, Player } from "../player/WorkoutPlayer.jsx";
+import { S, globalCss, prefetchGifs } from "../shared/ui.jsx";
+import { Preview, Player, collectGifUrls } from "../player/WorkoutPlayer.jsx";
 import Questionnaire from "./Questionnaire.jsx";
 import Profile from "./Profile.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
@@ -69,6 +69,10 @@ export default function AthleteHome() {
         api.getNextWarmup(profile), api.getNextStrengthSession(profile), api.getNextCircuitSession(profile),
       ]);
       setSessions({ warmup, strength, circuit });
+      // pre-scarica le GIF dei prossimi allenamenti delle 3 sezioni appena si
+      // sa quali sono, non quando l'atleta le apre — così quando entra in un
+      // allenamento le trova già pronte invece di vederle nere finché caricano.
+      prefetchGifs([...collectGifUrls(warmup), ...collectGifUrls(strength), ...collectGifUrls(circuit)]);
       setError("");
     } catch (e) {
       setError(e.message || "Errore nel caricamento degli allenamenti.");

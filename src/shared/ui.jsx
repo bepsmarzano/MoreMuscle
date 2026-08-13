@@ -49,6 +49,19 @@ export function ExGif({ src, alt, style, onClick }) {
   );
 }
 
+// pre-scarica GIF in background, senza mostrarle: le fa finire nella cache
+// del browser (e nel Service Worker, se attivo) prima che l'atleta arrivi
+// davvero a quell'esercizio — usato per avere pronto il prossimo allenamento
+// invece di scaricare esercizio per esercizio durante l'allenamento stesso.
+// Un errore su una singola GIF (link rotto) non deve fermare le altre.
+export function prefetchGifs(urls) {
+  urls.filter(Boolean).forEach((url) => {
+    const img = new Image();
+    img.onerror = () => {}; // silenzioso: se fallisce qui, ExGif riproverà comunque quando servirà davvero
+    img.src = url;
+  });
+}
+
 export const globalCss = `
 * { box-sizing: border-box; }
 body { margin: 0; background: #0d0d0d; }

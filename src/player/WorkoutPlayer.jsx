@@ -46,6 +46,15 @@ export function buildSequence(w, maxesByLiftKey = {}) {
   return steps;
 }
 
+// URL di tutte le GIF di un allenamento, per pre-scaricarle prima che
+// l'atleta ci arrivi davvero (vedi prefetchGifs in shared/ui.jsx). Riusa
+// buildSequence così non deve conoscere di nuovo la forma dei blocchi
+// standard/Forza — funziona già per entrambi allo stesso modo.
+export function collectGifUrls(w) {
+  if (!w || w.done) return [];
+  return buildSequence(w).map((s) => s.ex?.gif).filter(Boolean);
+}
+
 // "0 rep" = Max (standard o Forza, stessa convenzione: vedi blockEditors.jsx)
 // chiede all'atleta quante ne ha fatte davvero — l'unica cosa ancora chiesta
 // a posteriori. Il carico da usare non si chiede più: lo prescrive l'admin
@@ -372,9 +381,12 @@ export function Player({ workout, onExit, onHome, onLog, onFinish, maxesByLiftKe
         <div style={S.stageScrimBottom} />
 
         <div style={S.stageTopArea}>
-          <div style={{ ...S.stageTopRow, justifyContent: isRest ? "flex-end" : "space-between" }}>
+          <div style={{ ...S.stageTopRow, position: "relative", justifyContent: "flex-end" }}>
+            {/* centrata sull'intera larghezza della pagina (position:absolute
+                + left:50%), non solo sullo spazio libero accanto alla X — la
+                X resta fissa in alto a destra indipendentemente */}
             {!isRest && (
-              <div style={S.exBlockTag}>
+              <div style={{ ...S.exBlockTag, position: "absolute", left: "50%", transform: "translateX(-50%)" }}>
                 BLOCCO {step.blockIndex + 1}
                 {isStrength
                   ? ` · ${step.phase === "warmup" ? "Risc." : "Serie"} ${step.setIndex}/${step.totalSets}`
