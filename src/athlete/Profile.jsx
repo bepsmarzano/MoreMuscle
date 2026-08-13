@@ -16,8 +16,8 @@ export default function Profile({ profile, onSaved }) {
   const [savingName, setSavingName] = useState(false);
   const [nameSaved, setNameSaved] = useState(false);
 
-  const [liftKeys, setLiftKeys] = useState([]);
-  const [maxes, setMaxes] = useState({}); // { [liftKey]: "kg" }
+  const [lifts, setLifts] = useState([]); // [{ key, name }] — key = id libreria dell'esercizio
+  const [maxes, setMaxes] = useState({}); // { [key]: "kg" }
   const [loadingMaxes, setLoadingMaxes] = useState(true);
   const [error, setError] = useState("");
 
@@ -25,9 +25,9 @@ export default function Profile({ profile, onSaved }) {
     let alive = true;
     (async () => {
       try {
-        const [keys, rows] = await Promise.all([api.getMyAssignedLiftKeys(profile), api.getMyMaxes()]);
+        const [assignedLifts, rows] = await Promise.all([api.getMyAssignedLifts(profile), api.getMyMaxes()]);
         if (!alive) return;
-        setLiftKeys(keys);
+        setLifts(assignedLifts);
         const map = {};
         rows.forEach((r) => { map[r.lift_key] = String(r.max_kg); });
         setMaxes(map);
@@ -79,15 +79,15 @@ export default function Profile({ profile, onSaved }) {
       <div style={{ ...S.blockLabel, marginTop: 24, marginBottom: 8, display: "block" }}>MASSIMALI</div>
       {loadingMaxes ? (
         <p style={S.muted}>Caricamento…</p>
-      ) : liftKeys.length === 0 ? (
+      ) : lifts.length === 0 ? (
         <p style={S.muted}>Nessun programma Forza assegnato al momento — non c'è ancora nessun massimale da inserire.</p>
       ) : (
         <>
           <p style={{ ...S.muted, marginBottom: 12 }}>Usati per calcolare in automatico il peso da usare nella parte di Forza.</p>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {liftKeys.map((key) => (
+            {lifts.map(({ key, name }) => (
               <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                <span style={S.qValue}>{key}</span>
+                <span style={S.qValue}>{name}</span>
                 <input type="number" min={0} style={{ ...S.numInput, marginTop: 0 }} defaultValue={maxes[key] || ""}
                   placeholder="kg" onBlur={(e) => saveMax(key, e.target.value)} />
               </div>

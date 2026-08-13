@@ -19,6 +19,9 @@ export default function AdminAthletes() {
   const [inviting, setInviting] = useState(false);
   const [busyId, setBusyId] = useState(null);
   const [panel, setPanel] = useState({}); // { [athleteId]: "assign" | "detail" | null }
+  // card compresse di default (solo nome/badge) — con tanti atleti in lista
+  // è più pulito, si espande solo quella su cui si clicca.
+  const [expanded, setExpanded] = useState({}); // { [athleteId]: bool }
 
   const load = async () => {
     setLoading(true);
@@ -38,6 +41,7 @@ export default function AdminAthletes() {
   useEffect(() => { load(); }, []);
 
   const togglePanel = (athleteId, which) => setPanel((prev) => ({ ...prev, [athleteId]: prev[athleteId] === which ? null : which }));
+  const toggleExpanded = (athleteId) => setExpanded((prev) => ({ ...prev, [athleteId]: !prev[athleteId] }));
 
   const handleAssignWarmup = async (athleteId, programId) => {
     setBusyId(athleteId);
@@ -96,15 +100,19 @@ export default function AdminAthletes() {
         {athletes.map((a) => {
           const q = a.questionnaire;
           const activePanel = panel[a.id];
+          const isOpen = !!expanded[a.id];
           const warmupProgram = warmupPrograms.find((p) => p.id === a.assigned_warmup_program_id);
           const strengthProgram = strengthPrograms.find((p) => p.id === a.assigned_strength_program_id);
           const circuitProgram = circuitPrograms.find((p) => p.id === a.assigned_circuit_program_id);
           return (
             <div key={a.id} style={S.athleteCard}>
-              <div style={S.athleteHead}>
-                <div>
-                  <div style={S.athleteName}>{a.full_name || "Senza nome"}</div>
-                  <div style={S.athleteEmail}>{a.email}</div>
+              <div style={{ ...S.athleteHead, cursor: "pointer", marginBottom: isOpen ? 10 : 0 }} onClick={() => toggleExpanded(a.id)}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {isOpen ? <ChevronUp size={16} color="#888" /> : <ChevronDown size={16} color="#888" />}
+                  <div>
+                    <div style={S.athleteName}>{a.full_name || "Senza nome"}</div>
+                    <div style={S.athleteEmail}>{a.email}</div>
+                  </div>
                 </div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   <span style={{ ...S.badge, ...(warmupProgram ? S.badgeAssigned : S.badgeWaiting) }}>
@@ -120,41 +128,45 @@ export default function AdminAthletes() {
                 </div>
               </div>
 
-              {q ? (
-                <div style={S.qGrid}>
-                  <div><div style={S.qLabel}>Obiettivo</div><div style={S.qValue}>{q.goal || "—"}</div></div>
-                  <div><div style={S.qLabel}>Livello</div><div style={S.qValue}>{q.level || "—"}</div></div>
-                  <div><div style={S.qLabel}>Infortuni</div><div style={S.qValue}>{q.injuries || "—"}</div></div>
-                  <div><div style={S.qLabel}>Giorni/sett.</div><div style={S.qValue}>{q.days_per_week ?? "—"}</div></div>
-                  <div><div style={S.qLabel}>Attrezzatura</div><div style={S.qValue}>{q.equipment || "—"}</div></div>
-                </div>
-              ) : (
-                <p style={S.muted}>Questionario non ancora compilato.</p>
-              )}
-              {q?.notes && <p style={{ ...S.muted, marginBottom: 12 }}>Note: {q.notes}</p>}
+              {isOpen && (
+                <>
+                  {q ? (
+                    <div style={S.qGrid}>
+                      <div><div style={S.qLabel}>Obiettivo</div><div style={S.qValue}>{q.goal || "—"}</div></div>
+                      <div><div style={S.qLabel}>Livello</div><div style={S.qValue}>{q.level || "—"}</div></div>
+                      <div><div style={S.qLabel}>Infortuni</div><div style={S.qValue}>{q.injuries || "—"}</div></div>
+                      <div><div style={S.qLabel}>Giorni/sett.</div><div style={S.qValue}>{q.days_per_week ?? "—"}</div></div>
+                      <div><div style={S.qLabel}>Attrezzatura</div><div style={S.qValue}>{q.equipment || "—"}</div></div>
+                    </div>
+                  ) : (
+                    <p style={S.muted}>Questionario non ancora compilato.</p>
+                  )}
+                  {q?.notes && <p style={{ ...S.muted, marginBottom: 12 }}>Note: {q.notes}</p>}
 
-              <div style={S.assignRow}>
-                <button style={S.ghostBtn} onClick={() => togglePanel(a.id, "assign")}>
-                  {activePanel === "assign" ? <ChevronUp size={14} /> : <ChevronDown size={14} />} Assegna allenamenti
-                </button>
-                <button style={S.ghostBtn} onClick={() => togglePanel(a.id, "detail")}>
-                  {activePanel === "detail" ? <ChevronUp size={14} /> : <ChevronDown size={14} />} Massimali &amp; storico
-                </button>
-              </div>
+                  <div style={S.assignRow}>
+                    <button style={S.ghostBtn} onClick={() => togglePanel(a.id, "assign")}>
+                      {activePanel === "assign" ? <ChevronUp size={14} /> : <ChevronDown size={14} />} Assegna allenamenti
+                    </button>
+                    <button style={S.ghostBtn} onClick={() => togglePanel(a.id, "detail")}>
+                      {activePanel === "detail" ? <ChevronUp size={14} /> : <ChevronDown size={14} />} Massimali &amp; storico
+                    </button>
+                  </div>
 
-              {activePanel === "assign" && (
-                <AssignSection
-                  athlete={a}
-                  warmupPrograms={warmupPrograms}
-                  strengthPrograms={strengthPrograms}
-                  circuitPrograms={circuitPrograms}
-                  busy={busyId === a.id}
-                  onAssignWarmup={(id) => handleAssignWarmup(a.id, id)}
-                  onAssignStrength={(id) => handleAssignStrength(a.id, id)}
-                  onAssignCircuit={(id) => handleAssignCircuit(a.id, id)}
-                />
+                  {activePanel === "assign" && (
+                    <AssignSection
+                      athlete={a}
+                      warmupPrograms={warmupPrograms}
+                      strengthPrograms={strengthPrograms}
+                      circuitPrograms={circuitPrograms}
+                      busy={busyId === a.id}
+                      onAssignWarmup={(id) => handleAssignWarmup(a.id, id)}
+                      onAssignStrength={(id) => handleAssignStrength(a.id, id)}
+                      onAssignCircuit={(id) => handleAssignCircuit(a.id, id)}
+                    />
+                  )}
+                  {activePanel === "detail" && <AthleteDetail athleteId={a.id} />}
+                </>
               )}
-              {activePanel === "detail" && <AthleteDetail athleteId={a.id} />}
             </div>
           );
         })}

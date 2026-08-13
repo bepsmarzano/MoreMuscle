@@ -144,12 +144,16 @@ export default function WorkoutBuilder() {
 
       <main style={S.main}>
         {error && <p style={S.authError}>{error}</p>}
-        {section === "library" && <LibraryView library={library} setLibrary={persistLibrary} />}
-        {section === "warmups" && <WarmupPrograms library={library} />}
-        {section === "strength" && <StrengthPrograms library={library} />}
-        {section === "circuits" && <CircuitPrograms library={library} />}
-        {section === "athletes" && <AdminAthletes />}
-        {section === "settings" && <AppSettings />}
+        {/* tutte le schede restano montate (display:none su quelle non attive)
+            invece di smontarsi/rimontarsi cambiando scheda — così ognuna
+            mantiene il proprio stato (card espanse, ricerca, modifiche in
+            corso) quando ci si torna sopra, invece di ripartire da zero. */}
+        <div style={{ display: section === "library" ? "block" : "none" }}><LibraryView library={library} setLibrary={persistLibrary} /></div>
+        <div style={{ display: section === "warmups" ? "block" : "none" }}><WarmupPrograms library={library} /></div>
+        <div style={{ display: section === "strength" ? "block" : "none" }}><StrengthPrograms library={library} /></div>
+        <div style={{ display: section === "circuits" ? "block" : "none" }}><CircuitPrograms library={library} /></div>
+        <div style={{ display: section === "athletes" ? "block" : "none" }}><AdminAthletes /></div>
+        <div style={{ display: section === "settings" ? "block" : "none" }}><AppSettings /></div>
       </main>
     </div>
   );

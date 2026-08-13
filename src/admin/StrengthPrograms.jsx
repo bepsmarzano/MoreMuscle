@@ -90,7 +90,7 @@ function ProgramEditor({ program, library, onSave, onCancel }) {
   const [openIndex, setOpenIndex] = useState(sessions.length ? 0 : null);
 
   const addSession = () => {
-    setSessions((prev) => [...prev, { exerciseName: "", liftKey: "", exerciseGif: "", warmupSets: [], workSets: [] }]);
+    setSessions((prev) => [...prev, { exerciseName: "", libId: null, exerciseGif: "", warmupSets: [], workSets: [] }]);
     setOpenIndex(sessions.length);
   };
   const duplicateSession = (i) => {

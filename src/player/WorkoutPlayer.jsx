@@ -17,7 +17,10 @@ export function buildSequence(w, maxesByLiftKey = {}) {
   const steps = [];
   w.blocks.forEach((block, bi) => {
     if (block.type === "strength") {
-      const max = block.liftKey ? maxesByLiftKey[block.liftKey] : null;
+      // il massimale è collegato tramite l'id dell'esercizio scelto dalla
+      // libreria (block.libId) — niente più chiave scritta a mano da tenere
+      // allineata tra le sessioni.
+      const max = block.libId ? maxesByLiftKey[block.libId] : null;
       const warmup = block.warmupSets || [];
       const work = block.workSets || [];
       warmup.forEach((set, i) => {
@@ -175,8 +178,8 @@ export function Preview({ workout, onStart, onBack }) {
 // onLog({ exerciseName, reps }) — chiamato quando l'atleta annota una serie
 // Max/AMRAP (standard o Forza). Il carico da usare non si annota più: è
 // prescritto dall'admin (ex.loadLevel) e mostrato all'atleta, non chiesto.
-// maxesByLiftKey: { [liftKey]: kg } dei massimali noti, per calcolare i pesi
-// di lavoro della Forza.
+// maxesByLiftKey: { [libId esercizio]: kg } dei massimali noti, per
+// calcolare i pesi di lavoro della Forza.
 // onHome (opzionale): torna dritto al menu principale, non solo all'anteprima
 // di questa sezione — un'azione client-side pura, senza chiamate di rete,
 // sempre disponibile anche se il completamento della sessione dovesse fallire.

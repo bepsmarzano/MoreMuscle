@@ -178,15 +178,18 @@ export async function setMyMax(liftKey, maxKg) {
   if (error) throw error;
 }
 
-// chiavi massimale rilevanti per l'atleta in questo momento: quelle usate
+// esercizi di forza rilevanti per l'atleta in questo momento: quelli usati
 // dalle sessioni del Programma Forza assegnato — così in "Profilo" vede solo
-// ciò che gli serve davvero inserire, non un elenco libero da indovinare.
-export async function getMyAssignedLiftKeys(profile) {
+// ciò che gli serve davvero inserire, con il nome vero dell'esercizio (non
+// una chiave grezza). La chiave di collegamento è l'id della libreria
+// (block.libId), non più una stringa scritta a mano — niente più mismatch.
+export async function getMyAssignedLifts(profile) {
   if (!profile?.assigned_strength_program_id) return [];
   const { data, error } = await supabase.from("strength_programs").select("sessions").eq("id", profile.assigned_strength_program_id).maybeSingle();
   if (error) throw error;
-  const keys = (data?.sessions || []).map((s) => s.liftKey).filter(Boolean);
-  return [...new Set(keys)];
+  const byKey = new Map();
+  (data?.sessions || []).forEach((s) => { if (s.libId && s.exerciseName) byKey.set(s.libId, s.exerciseName); });
+  return [...byKey.entries()].map(([key, name]) => ({ key, name }));
 }
 
 // ---- log annotati dall'atleta durante l'allenamento -------------------------------

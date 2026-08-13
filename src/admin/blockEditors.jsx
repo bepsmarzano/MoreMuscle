@@ -134,11 +134,11 @@ export function StrengthBlockEditor({ block, onPatch, library }) {
         </div>
         <button style={S.ghostBtn} onClick={() => setPicking(true)}><Library size={14} /> Scegli dalla libreria</button>
       </div>
-      <label style={S.fieldLbl}>Chiave massimale</label>
-      <input style={S.fieldInput} value={block.liftKey || ""} placeholder="es. back_squat" onChange={(e) => onPatch({ liftKey: e.target.value })} />
-      <p style={{ ...S.muted, marginTop: 4, marginBottom: 14 }}>
-        La "chiave massimale" collega questa sessione al massimale dell'atleta (impostato dal pannello Atleti). Usa la stessa chiave per lo stesso sollevamento in tutte le sessioni del programma.
-      </p>
+      {block.exerciseName && (
+        <p style={{ ...S.muted, marginTop: -6, marginBottom: 14 }}>
+          Il massimale dell'atleta per "{block.exerciseName}" (che lo inserisce dal suo Profilo, o tu dal pannello Atleti) calcola in automatico il peso di ogni serie di lavoro qui sotto — nessuna chiave da scrivere a mano: usare lo stesso esercizio dalla libreria basta a collegarli.
+        </p>
+      )}
 
       <div style={S.blockLabel}>RISCALDAMENTO SPECIFICO</div>
       {warmup.map((s, i) => (
