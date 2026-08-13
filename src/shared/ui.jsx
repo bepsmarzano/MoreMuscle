@@ -30,7 +30,10 @@ export const PLACEHOLDER_GIF =
 // Drive/Photos a volte rifiutano la richiesta in base al referrer) + un retry
 // automatico prima di arrendersi al placeholder — i link lh3.googleusercontent.com
 // falliscono a volte in modo transitorio, specie quando ne carichi tanti insieme.
-export function ExGif({ src, alt, style, onClick }) {
+// fetchPriority: "high" per quella davvero a schermo ora (es. il video del
+// Player) — così non aspetta mai dietro alle GIF pre-caricate in background
+// per i prossimi esercizi (vedi prefetchGifs più sotto).
+export function ExGif({ src, alt, style, onClick, fetchPriority }) {
   const retries = useRef(0);
   const handleError = (e) => {
     const img = e.currentTarget;
@@ -45,7 +48,7 @@ export function ExGif({ src, alt, style, onClick }) {
   };
   return (
     <img src={src || PLACEHOLDER_GIF} alt={alt} style={style} onClick={onClick}
-      loading="lazy" referrerPolicy="no-referrer" onError={handleError} />
+      loading="lazy" referrerPolicy="no-referrer" onError={handleError} fetchPriority={fetchPriority || "auto"} />
   );
 }
 
@@ -53,11 +56,15 @@ export function ExGif({ src, alt, style, onClick }) {
 // del browser (e nel Service Worker, se attivo) prima che l'atleta arrivi
 // davvero a quell'esercizio — usato per avere pronto il prossimo allenamento
 // invece di scaricare esercizio per esercizio durante l'allenamento stesso.
+// priority: "low" di default (di proposito — non deve mai competere con una
+// GIF che serve ORA, tipo il video in corso nel Player, che chiede "high"
+// tramite ExGif) — passa "high" solo per le prime, più urgenti da avere pronte.
 // Un errore su una singola GIF (link rotto) non deve fermare le altre.
-export function prefetchGifs(urls) {
+export function prefetchGifs(urls, priority = "low") {
   urls.filter(Boolean).forEach((url) => {
     const img = new Image();
     img.onerror = () => {}; // silenzioso: se fallisce qui, ExGif riproverà comunque quando servirà davvero
+    img.fetchPriority = priority;
     img.src = url;
   });
 }

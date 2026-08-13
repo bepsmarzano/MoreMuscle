@@ -375,7 +375,7 @@ export function Player({ workout, onExit, onHome, onLog, onFinish, maxesByLiftKe
         {isRest ? (
           <div style={{ ...S.stageMedia, background: "radial-gradient(circle at 50% 40%, #1a2c4a, #05070d)" }} />
         ) : (
-          <ExGif src={step.ex.gif} alt={step.ex.name} style={S.stageMedia} />
+          <ExGif src={step.ex.gif} alt={step.ex.name} style={S.stageMedia} fetchPriority="high" />
         )}
         <div style={S.stageScrimTop} />
         <div style={S.stageScrimBottom} />

@@ -72,7 +72,14 @@ export default function AthleteHome() {
       // pre-scarica le GIF dei prossimi allenamenti delle 3 sezioni appena si
       // sa quali sono, non quando l'atleta le apre — così quando entra in un
       // allenamento le trova già pronte invece di vederle nere finché caricano.
-      prefetchGifs([...collectGifUrls(warmup), ...collectGifUrls(strength), ...collectGifUrls(circuit)]);
+      // Ordine di priorità: Riscaldamento poi Forza poi Circuito (l'ordine in
+      // cui si fanno di solito in palestra), e dentro ogni sessione l'ordine
+      // di esecuzione degli esercizi — le prime in assoluto ad alta priorità
+      // (competono meno con altro traffico), il resto a bassa priorità: non
+      // deve mai rallentare la GIF che l'atleta sta guardando in quel momento.
+      const orderedGifUrls = [...collectGifUrls(warmup), ...collectGifUrls(strength), ...collectGifUrls(circuit)];
+      prefetchGifs(orderedGifUrls.slice(0, 4), "high");
+      prefetchGifs(orderedGifUrls.slice(4), "low");
       setError("");
     } catch (e) {
       setError(e.message || "Errore nel caricamento degli allenamenti.");
