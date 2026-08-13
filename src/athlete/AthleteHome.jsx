@@ -22,9 +22,9 @@ const SECTIONS = [
 // ---------------------------------------------------------------------------
 export default function AthleteHome() {
   const { profile, signOut, refreshProfile } = useAuth();
-  // pagina iniziale: una volta per sessione di browser (sessionStorage), non
-  // a ogni refresh — "Vai agli allenamenti" la supera per il resto della sessione.
-  const [showLanding, setShowLanding] = useState(() => sessionStorage.getItem("mm_landing_seen") !== "1");
+  // pagina iniziale: si vede a ogni apertura dell'app (non solo la prima
+  // volta) — "Vai agli allenamenti" la supera solo per questa visita.
+  const [showLanding, setShowLanding] = useState(true);
   const [settings, setSettings] = useState(null);
   const [questionnaire, setQuestionnaire] = useState(undefined); // undefined = in caricamento, null = non compilato
   const [editingQuestionnaire, setEditingQuestionnaire] = useState(false);
@@ -43,7 +43,7 @@ export default function AthleteHome() {
     return () => { alive = false; };
   }, []);
 
-  const enterApp = () => { sessionStorage.setItem("mm_landing_seen", "1"); setShowLanding(false); };
+  const enterApp = () => setShowLanding(false);
 
   useEffect(() => {
     let alive = true;

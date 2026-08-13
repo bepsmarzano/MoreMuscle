@@ -3,7 +3,7 @@
 Web app per creare e somministrare allenamenti con GIF, countdown e annunci vocali. Un admin costruisce tre librerie riusabili — **Riscaldamenti**, **Programmi Forza**, **Programmi Circuito** — e le assegna **separatamente e indipendentemente** a ogni atleta; invita gli atleti via email e le assegnazioni si basano anche su un questionario che l'atleta compila al primo accesso.
 
 ## Stack
-React 18 + Vite + Supabase (auth + Postgres) + Vercel (deploy + funzione serverless per gli inviti).
+React 18 + Vite + Supabase (auth + Postgres) + Vercel (deploy + funzione serverless per gli inviti). Service Worker (`vite-plugin-pwa`) per la cache delle GIF esercizio e "salva su home" come app.
 
 ## Setup — prima di avviare in locale
 1. **Supabase**: hai già un progetto — apri il SQL Editor e incolla/esegui **in ordine**:
@@ -109,6 +109,7 @@ Le GIF caricate finora sono hotlink a Google Drive/Photos — comodo per importa
 
 ## Note
 - Le GIF sono file su Supabase Storage (bucket `exercise-gifs`, dopo la migrazione sopra) — prima erano hotlink a Google Drive/Photos, a volte lenti/inaffidabili per l'incorporamento; l'app riprova un paio di volte prima di mostrare un placeholder in ogni caso — vedi `ExGif` in `src/shared/ui.jsx`.
+- **Service Worker** (`vite-plugin-pwa`, configurato in `vite.config.js`): attivo solo nella build di produzione (non in `npm run dev`). Le GIF esercizio (Supabase Storage e gli eventuali link Google Drive/Photos rimasti) si cachano cache-first per 60 giorni — la prima volta che un esercizio si vede scarica, le volte dopo è istantaneo, anche offline. Si aggiorna da solo a ogni deploy (`registerType: "autoUpdate"`), niente versioni vecchie dell'app bloccate in cache.
 - La voce usa la sintesi del browser (Web Speech API): su iOS parte solo dopo un tap dell'utente — il tap su "Inizia" nell'anteprima è il gesto che la sblocca (il Player parte direttamente, niente schermata "Sta per iniziare" di mezzo).
 - Ogni atleta ha 3 assegnazioni indipendenti (`profiles.assigned_warmup_program_id`+`warmup_position`, `assigned_strength_program_id`+`strength_position`, `assigned_circuit_program_id`+`circuit_position`) — niente rami/percorsi alternativi dentro una sezione, ma le 3 sezioni non si influenzano a vicenda. Le sessioni si generano al volo dalla libreria assegnata, non sono righe salvate: eliminare/modificare un Programma assegnato cambia cosa vede l'atleta la prossima volta.
 - Le percentuali/i massimali non richiedono mai un inserimento manuale di kg da parte dell'atleta; l'appuntamento di vendita resta fuori dall'app.
