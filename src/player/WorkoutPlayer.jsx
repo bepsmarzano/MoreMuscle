@@ -56,6 +56,37 @@ function needsLog(step) {
   return null;
 }
 
+// Progresso salvato sul dispositivo (localStorage): non possiamo far
+// continuare l'esecuzione mentre il telefono è bloccato o un'altra app è in
+// primo piano (limite di sistema, non aggirabile), ma se il browser scarica
+// e ricarica la pagina in background — la causa più comune di "torna sempre
+// a zero" — possiamo almeno riprendere da dove eravamo rimasti al rientro.
+// Una sola voce salvata alla volta: basta per il caso reale (un solo
+// allenamento in corso), non serve tracciarne più d'uno in parallelo.
+const RESUME_KEY = "mm_player_progress";
+const RESUME_MAX_AGE_MS = 6 * 60 * 60 * 1000; // oltre le 6 ore non ha senso "riprendere", meglio ripartire
+
+function loadSavedProgress(workoutId) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(RESUME_KEY) || "null");
+    if (!saved || saved.workoutId !== workoutId) return null;
+    if (Date.now() - saved.savedAt > RESUME_MAX_AGE_MS) return null;
+    return saved;
+  } catch {
+    return null; // storage non disponibile o dato corrotto: si riparte da capo, non è un errore fatale
+  }
+}
+
+function saveProgress(workoutId, idx, remaining, pendingLog) {
+  try {
+    localStorage.setItem(RESUME_KEY, JSON.stringify({ workoutId, idx, remaining, pendingLog, savedAt: Date.now() }));
+  } catch { /* storage pieno/non disponibile: pazienza, si riparte da capo se serve */ }
+}
+
+function clearProgress() {
+  try { localStorage.removeItem(RESUME_KEY); } catch { /* niente da pulire */ }
+}
+
 // Sintesi vocale del browser (Web Speech API). Un contatore "generazione"
 // invalida qualunque utterance precedente ancora in corso quando arriva un
 // nuovo annuncio: quando cancel() interrompe un'utterance con onend
@@ -142,11 +173,16 @@ export function Preview({ workout, onStart, onBack }) {
 // sempre disponibile anche se il completamento della sessione dovesse fallire.
 export function Player({ workout, onExit, onHome, onLog, onFinish, maxesByLiftKey = {} }) {
   const sequence = useRef(buildSequence(workout, maxesByLiftKey)).current;
-  const [idx, setIdx] = useState(0);
-  const [remaining, setRemaining] = useState(sequence[0]?.type === "rest" ? 0 : (sequence[0]?.ex?.time ?? 0));
-  const [running, setRunning] = useState(true); // parte subito: niente più schermata "Sta per iniziare" di mezzo
+  // letto una volta sola al mount: se combacia con questo stesso allenamento
+  // (e non è troppo vecchio) si riprende da lì invece che dall'inizio.
+  const saved = useRef(loadSavedProgress(workout.id)).current;
+  const [idx, setIdx] = useState(() => Math.min(saved?.idx ?? 0, sequence.length - 1));
+  const [remaining, setRemaining] = useState(() => saved?.remaining ?? (sequence[0]?.type === "rest" ? 0 : (sequence[0]?.ex?.time ?? 0)));
+  // riprendendo si parte in pausa: l'atleta si riorienta e preme play quando è pronto,
+  // invece di ritrovarsi il countdown già in corsa appena riapre l'app.
+  const [running, setRunning] = useState(!saved);
   const [voiceOn, setVoiceOn] = useState(true);
-  const [pendingLog, setPendingLog] = useState(null); // { kind: "reps", stepIndex } — solo per le serie Max/AMRAP
+  const [pendingLog, setPendingLog] = useState(saved?.pendingLog ?? null); // { kind: "reps", stepIndex } — solo per le serie Max/AMRAP
   const [repsInput, setRepsInput] = useState("");
   const speak = useSpeech(voiceOn);
   const announced10 = useRef(false);
@@ -176,14 +212,30 @@ export function Player({ workout, onExit, onHome, onLog, onFinish, maxesByLiftKe
 
   // annuncio di apertura, una volta sola al mount (il tap su "Inizia" nell'anteprima
   // è già il gesto utente richiesto da iOS per sbloccare la sintesi vocale — non
-  // serve più un secondo tap su "Sta per iniziare" dentro al Player).
+  // serve più un secondo tap su "Sta per iniziare" dentro al Player). Se si
+  // riprende un allenamento salvato, niente "Let's go!": si annuncia subito
+  // su cosa si è rimasti, così chi riapre l'app si riorienta senza dover
+  // guardare lo schermo.
   useEffect(() => {
     if (introSpoken.current) return;
     introSpoken.current = true;
+    if (saved) {
+      announceStep(idx);
+      return;
+    }
     speak("Let's go!");
     const t = setTimeout(() => announceStep(0), 2200);
     return () => clearTimeout(t);
+    // eslint: idx/saved letti volutamente solo al mount (guardia introSpoken sopra)
   }, [speak, announceStep]);
+
+  // salva il punto in cui siamo a ogni cambiamento (circa una volta al
+  // secondo mentre gira il countdown): se il browser scarica e ricarica la
+  // pagina mentre l'app è in background, al ritorno si riprende da qui
+  // invece che dall'inizio.
+  useEffect(() => {
+    saveProgress(workout.id, idx, remaining, pendingLog);
+  }, [workout.id, idx, remaining, pendingLog]);
 
   // schermo sempre acceso finché l'allenamento è a schermo intero — la causa
   // più comune di "l'allenamento si interrompe in background" è lo spegnimento
@@ -279,7 +331,7 @@ export function Player({ workout, onExit, onHome, onLog, onFinish, maxesByLiftKe
   // l'atleta: avanza alla sessione successiva del piano). Se rifà
   // l'allenamento (Rifai) e lo riporta a termine, scatta di nuovo.
   useEffect(() => {
-    if (finished) onFinish?.();
+    if (finished) { onFinish?.(); clearProgress(); }
   }, [finished, onFinish]);
   // durante il riposo non c'è un target fisso da riempire: l'anello fa uno
   // "sweep" continuo di 60s (come una lancetta dei secondi) invece di
