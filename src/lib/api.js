@@ -231,6 +231,25 @@ export async function inviteAthlete({ email, fullName }) {
   return body;
 }
 
+// elimina l'account di un atleta (via funzione serverless, service role key):
+// profilo/questionario/massimali/log si ripuliscono da soli (cascade). Utile
+// anche per "reinvitare" chi non ha mai completato l'accesso — Supabase non
+// permette di invitare due volte la stessa email finché l'account esiste.
+export async function deleteAthlete(athleteId) {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const token = sessionData?.session?.access_token;
+  if (!token) throw new Error("Sessione non valida, rifai il login.");
+  const res = await fetch("/api/delete-athlete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ athleteId }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body?.error || "Eliminazione non riuscita.");
+  return body;
+}
+
 // ---- questionario (atleta) -----------------------------------------------------
 export async function getQuestionnaire(athleteId) {
   const { data, error } = await supabase.from("questionnaire_responses").select("*").eq("athlete_id", athleteId).maybeSingle();

@@ -35,7 +35,7 @@ React 18 + Vite + Supabase (auth + Postgres) + Vercel (deploy + funzione serverl
    - infine fai login nell'app con quell'email/password. Senza il passo di promozione il tuo account resta un "atleta" qualsiasi.
 
 ## Ruoli
-- **Admin** (tu): Libreria esercizi, Programmi Riscaldamento, Programmi Forza, Programmi Circuito, Atleti (inviti/assegnazione per sezione/massimali/log), Impostazioni (testo istruzioni + numero WhatsApp mostrati all'atleta).
+- **Admin** (tu): Libreria esercizi, Programmi Riscaldamento, Programmi Forza, Programmi Circuito, Atleti (inviti/eliminazione/assegnazione per sezione/massimali/log), Impostazioni (testo istruzioni + numero WhatsApp mostrati all'atleta).
 - **Atleta**: al primo accesso, dopo il login, vede una **pagina iniziale** (saluto, pulsante "Vai agli allenamenti", istruzioni brevi, pulsante "Contattami" che apre una chat WhatsApp col tuo numero — tutto configurabile dall'admin in Impostazioni); superata quella, compila un questionario standard (obiettivo, livello, infortuni/limitazioni, giorni disponibili, attrezzatura — modificabile in seguito) e poi vede un menu con **3 sezioni indipendenti** — Riscaldamento, Forza, Circuito — ognuna con la propria "prossima sessione" (o "non assegnato"/"programma completato" se non c'è nulla da fare). Le sezioni avanzano **indipendentemente**: completarne una non tocca le altre due, e finché una sessione non viene portata a termine resta la "prossima" — saltarla oggi significa semplicemente ritrovarla identica la volta dopo. Solo sul **Circuito** c'è un pulsante "Salta per oggi" esplicito (stesso effetto di non farlo: torna al menu senza avanzare). Una sessione già completata **non è ripetibile** (niente "Rifai" nel flusso reale). Dal menu può anche aprire **Profilo**: nome e cognome (prima li impostava solo l'admin all'invito) e i propri massimali — usati per calcolare in automatico il peso di lavoro nella parte di Forza.
 
 Gli atleti **non si autoregistrano**: li inviti tu dal pannello Atleti (email + nome opzionale), Supabase manda l'invito e l'atleta imposta la password al primo accesso tramite quel link.
@@ -70,6 +70,7 @@ src/
   auth/       AuthProvider (sessione+ruolo), LoginScreen, SetPassword
 api/
   invite-athlete.js   funzione serverless Vercel: invita un atleta via email (service role key)
+  delete-athlete.js   idem: elimina l'account di un atleta (cascade su profilo/questionario/massimali/log) — utile anche per reinvitare chi non ha mai completato l'accesso, dato che Supabase non invita due volte la stessa email finché l'utente esiste
 supabase/
   schema.sql                        da eseguire manualmente nel SQL Editor di Supabase
   migration_strength_plans.sql      idem, dopo schema.sql (storico)

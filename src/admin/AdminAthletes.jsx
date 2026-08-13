@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { UserPlus, RefreshCw, X, Check, Plus, ChevronDown, ChevronUp } from "lucide-react";
+import { UserPlus, RefreshCw, X, Check, Plus, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import { S } from "../shared/ui.jsx";
 import * as api from "../lib/api.js";
 
@@ -22,6 +22,8 @@ export default function AdminAthletes() {
   // card compresse di default (solo nome/badge) — con tanti atleti in lista
   // è più pulito, si espande solo quella su cui si clicca.
   const [expanded, setExpanded] = useState({}); // { [athleteId]: bool }
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null); // conferma a un click prima di eliminare davvero
+  const [deletingId, setDeletingId] = useState(null);
 
   const load = async () => {
     setLoading(true);
@@ -76,6 +78,22 @@ export default function AdminAthletes() {
       setError(e.message || "Assegnazione non riuscita.");
     } finally {
       setBusyId(null);
+    }
+  };
+
+  // elimina l'account: utile anche per "reinvitare" chi non ha mai completato
+  // l'accesso — Supabase non permette di invitare due volte la stessa email
+  // finché l'utente esiste, quindi elimina e reinvita da zero è la via.
+  const handleDelete = async (athleteId) => {
+    setDeletingId(athleteId);
+    try {
+      await api.deleteAthlete(athleteId);
+      setAthletes((prev) => prev.filter((a) => a.id !== athleteId));
+      setConfirmDeleteId(null);
+    } catch (e) {
+      setError(e.message || "Eliminazione non riuscita.");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -165,6 +183,22 @@ export default function AdminAthletes() {
                     />
                   )}
                   {activePanel === "detail" && <AthleteDetail athleteId={a.id} />}
+
+                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #232323" }}>
+                    {confirmDeleteId === a.id ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 13, color: "#f87171" }}>Eliminare {a.full_name || a.email} definitivamente? Non si può annullare.</span>
+                        <button style={{ ...S.ghostBtn, borderColor: "#f87171", color: "#f87171" }} onClick={() => handleDelete(a.id)} disabled={deletingId === a.id}>
+                          <Trash2 size={13} /> {deletingId === a.id ? "Elimino…" : "Sì, elimina"}
+                        </button>
+                        <button style={S.ghostBtn} onClick={() => setConfirmDeleteId(null)}>Annulla</button>
+                      </div>
+                    ) : (
+                      <button style={{ ...S.ghostBtn, color: "#888" }} onClick={() => setConfirmDeleteId(a.id)}>
+                        <Trash2 size={13} /> Elimina atleta
+                      </button>
+                    )}
+                  </div>
                 </>
               )}
             </div>
