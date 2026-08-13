@@ -97,6 +97,8 @@ Serve per far funzionare gli inviti via email (la funzione in `api/invite-athlet
 
 Per testare l'invito in locale senza deployare: `vercel dev` (richiede `vercel login` + `vercel env pull`).
 
+[`vercel.json`](vercel.json) fa da "riscrittura" per la SPA: percorsi come `/set-password` esistono solo lato client (gestiti da `App.jsx` in base a `window.location.pathname`, non da un file reale), quindi senza questa regola Vercel risponde con un suo 404 (`NOT_FOUND`) invece di servire l'app — succede tipicamente cliccando il link di un'email di invito. La regola non tocca `/api/*` né i file statici (JS/GIF/manifest): Vercel li serve normalmente comunque, la riscrittura si applica solo quando non trova nient'altro.
+
 ## Spostare le GIF su Supabase Storage
 Le GIF caricate finora sono hotlink a Google Drive/Photos — comodo per importarle la prima volta, ma quel servizio non è pensato per essere incorporato in un'app: a volte risponde lento, e le intestazioni di cache che manda non garantiscono che il browser le tenga salvate tra una sessione e l'altra. Questa migrazione le scarica una volta e le ricarica sul nostro Storage Supabase (bucket `exercise-gifs`, pubblico), poi aggiorna sia la libreria esercizi sia le copie già salvate dentro ai Programmi Riscaldamento/Forza/Circuito (ogni sessione porta con sé la propria copia del link GIF al momento in cui è stata composta, quindi cambiare solo la libreria non basterebbe). **Non serve nessuna modifica al codice**: i link restano semplici URL, solo il dominio cambia.
 
