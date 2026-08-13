@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Dumbbell, LogOut, Edit3, Flame, Repeat, SkipForward, ChevronLeft, Play, MessageCircle } from "lucide-react";
+import { Dumbbell, LogOut, Edit3, Flame, Repeat, SkipForward, ChevronLeft, Play, MessageCircle, Home } from "lucide-react";
 import { S, globalCss } from "../shared/ui.jsx";
 import { Preview, Player } from "../player/WorkoutPlayer.jsx";
 import Questionnaire from "./Questionnaire.jsx";
@@ -44,6 +44,7 @@ export default function AthleteHome() {
   }, []);
 
   const enterApp = () => setShowLanding(false);
+  const backToLanding = () => setShowLanding(true);
 
   useEffect(() => {
     let alive = true;
@@ -239,7 +240,8 @@ export default function AthleteHome() {
             </div>
           </>
         )}
-        <div style={{ marginTop: 20, textAlign: "center" }}>
+        <div style={{ marginTop: 20, display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+          <button style={S.ghostBtn} onClick={backToLanding}><Home size={14} /> Home</button>
           <button style={S.ghostBtn} onClick={() => setEditingQuestionnaire(true)}><Edit3 size={14} /> Modifica questionario</button>
         </div>
       </main>
