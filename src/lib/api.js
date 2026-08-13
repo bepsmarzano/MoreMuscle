@@ -154,6 +154,41 @@ export async function setAthleteMax(athleteId, liftKey, maxKg) {
   if (error) throw error;
 }
 
+// ---- profilo atleta (self-service: nome + massimali) ------------------------------
+// nome: solo una RPC stretta (aggiorna esclusivamente full_name sul proprio
+// profilo) — niente scrittura diretta sulla riga profiles, che contiene anche
+// role/assegnazioni non toccabili dall'atleta.
+export async function updateMyName(fullName) {
+  const { error } = await supabase.rpc("update_my_name", { p_full_name: fullName });
+  if (error) throw error;
+}
+
+export async function getMyMaxes() {
+  const uid = await currentUserId();
+  const { data, error } = await supabase.from("athlete_maxes").select("*").eq("athlete_id", uid);
+  if (error) throw error;
+  return data;
+}
+
+export async function setMyMax(liftKey, maxKg) {
+  const uid = await currentUserId();
+  const { error } = await supabase
+    .from("athlete_maxes")
+    .upsert({ athlete_id: uid, lift_key: liftKey, max_kg: maxKg, updated_at: new Date().toISOString() }, { onConflict: "athlete_id,lift_key" });
+  if (error) throw error;
+}
+
+// chiavi massimale rilevanti per l'atleta in questo momento: quelle usate
+// dalle sessioni del Programma Forza assegnato — così in "Profilo" vede solo
+// ciò che gli serve davvero inserire, non un elenco libero da indovinare.
+export async function getMyAssignedLiftKeys(profile) {
+  if (!profile?.assigned_strength_program_id) return [];
+  const { data, error } = await supabase.from("strength_programs").select("sessions").eq("id", profile.assigned_strength_program_id).maybeSingle();
+  if (error) throw error;
+  const keys = (data?.sessions || []).map((s) => s.liftKey).filter(Boolean);
+  return [...new Set(keys)];
+}
+
 // ---- log annotati dall'atleta durante l'allenamento -------------------------------
 // reps: ripetizioni fatte in una serie AMRAP della Forza.
 // loadLabel: livello di carico usato in un esercizio a manubri/kettlebell del Circuito.

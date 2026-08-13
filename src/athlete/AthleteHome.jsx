@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
-import { Dumbbell, LogOut, Edit3, Flame, Repeat, SkipForward, ChevronLeft, Play, MessageCircle, Home } from "lucide-react";
+import { Dumbbell, LogOut, Edit3, Flame, Repeat, SkipForward, ChevronLeft, Play, MessageCircle, Home, User } from "lucide-react";
 import { S, globalCss } from "../shared/ui.jsx";
 import { Preview, Player } from "../player/WorkoutPlayer.jsx";
 import Questionnaire from "./Questionnaire.jsx";
+import Profile from "./Profile.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import * as api from "../lib/api.js";
 
@@ -28,6 +29,8 @@ export default function AthleteHome() {
   const [settings, setSettings] = useState(null);
   const [questionnaire, setQuestionnaire] = useState(undefined); // undefined = in caricamento, null = non compilato
   const [editingQuestionnaire, setEditingQuestionnaire] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [maxesByLiftKey, setMaxesByLiftKey] = useState({});
   const [sessions, setSessions] = useState({});
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [openSection, setOpenSection] = useState(null); // "warmup" | "strength" | "circuit" | null
@@ -77,6 +80,20 @@ export default function AthleteHome() {
   // riparte da capo ogni volta che il profilo cambia (incluso dopo aver
   // completato una sessione, via refreshProfile in handleFinish)
   useEffect(() => { loadSessions(); }, [profile]);
+
+  // massimali dell'atleta, per calcolare in automatico il peso di lavoro nel
+  // blocco Forza (percentuale × massimale) — passati al Player più sotto.
+  const loadMaxes = async () => {
+    try {
+      const rows = await api.getMyMaxes();
+      const map = {};
+      rows.forEach((r) => { map[r.lift_key] = r.max_kg; });
+      setMaxesByLiftKey(map);
+    } catch (e) {
+      setError(e.message || "Errore nel caricamento dei massimali.");
+    }
+  };
+  useEffect(() => { loadMaxes(); }, [profile]);
 
   const openPreview = (key) => { setOpenSection(key); setView("preview"); };
   const closeSection = () => { setOpenSection(null); setView("preview"); };
@@ -148,6 +165,21 @@ export default function AthleteHome() {
     );
   }
 
+  if (showProfile) {
+    return (
+      <div style={S.app}>
+        <style>{globalCss}</style>
+        {header}
+        <main style={S.main}>
+          <Profile profile={profile} onSaved={refreshProfile} />
+          <div style={{ marginTop: 20, textAlign: "center" }}>
+            <button style={S.ghostBtn} onClick={() => { setShowProfile(false); loadMaxes(); }}><ChevronLeft size={14} /> Torna al menu</button>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   if (!questionnaire || editingQuestionnaire) {
     return (
       <div style={S.app}>
@@ -173,7 +205,7 @@ export default function AthleteHome() {
     const workout = sessions[openSection];
 
     if (view === "play" && workout && !workout.done) {
-      return <Player workout={workout} onExit={() => setView("preview")} onHome={closeSection} onLog={handleLog} onFinish={() => handleFinish(def)} />;
+      return <Player workout={workout} onExit={() => setView("preview")} onHome={closeSection} onLog={handleLog} onFinish={() => handleFinish(def)} maxesByLiftKey={maxesByLiftKey} />;
     }
 
     return (
@@ -242,6 +274,7 @@ export default function AthleteHome() {
         )}
         <div style={{ marginTop: 20, display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
           <button style={S.ghostBtn} onClick={backToLanding}><Home size={14} /> Home</button>
+          <button style={S.ghostBtn} onClick={() => setShowProfile(true)}><User size={14} /> Profilo</button>
           <button style={S.ghostBtn} onClick={() => setEditingQuestionnaire(true)}><Edit3 size={14} /> Modifica questionario</button>
         </div>
       </main>

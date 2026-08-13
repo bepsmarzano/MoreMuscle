@@ -14,6 +14,8 @@ React 18 + Vite + Supabase (auth + Postgres) + Vercel (deploy + funzione serverl
    - [`supabase/migration_warmup_programs.sql`](supabase/migration_warmup_programs.sql) — il Riscaldamento diventa un "Programma" riusabile (sequenza ordinata di sessioni) come Forza/Circuito, assegnato con un solo menu a tendina invece di una rotazione ad-hoc per atleta.
    - [`supabase/migration_app_settings.sql`](supabase/migration_app_settings.sql) — impostazioni globali (testo istruzioni + numero WhatsApp) mostrate nella pagina iniziale dell'atleta.
    - [`supabase/migration_gif_storage.sql`](supabase/migration_gif_storage.sql) — bucket Supabase Storage per le GIF esercizio (al posto degli hotlink a Google Drive/Photos, lenti e non affidabili). Dopo questa, esegui anche lo script di migrazione dati — vedi [Spostare le GIF su Supabase Storage](#spostare-le-gif-su-supabase-storage) più sotto.
+   - [`supabase/migration_gif_size_limit.sql`](supabase/migration_gif_size_limit.sql) — alza il limite di dimensione del bucket GIF (informativa: lo script di migrazione lo fa già da solo a ogni run).
+   - [`supabase/migration_athlete_profile.sql`](supabase/migration_athlete_profile.sql) — profilo atleta self-service: nome e massimali inseribili dall'atleta stesso, non solo dall'admin.
 2. **Variabili d'ambiente**: copia `.env.local.example` in `.env.local` e riempilo con Project URL + anon public key (Supabase → Project Settings → API).
    ```bash
    cp .env.local.example .env.local
@@ -34,20 +36,21 @@ React 18 + Vite + Supabase (auth + Postgres) + Vercel (deploy + funzione serverl
 
 ## Ruoli
 - **Admin** (tu): Libreria esercizi, Programmi Riscaldamento, Programmi Forza, Programmi Circuito, Atleti (inviti/assegnazione per sezione/massimali/log), Impostazioni (testo istruzioni + numero WhatsApp mostrati all'atleta).
-- **Atleta**: al primo accesso, dopo il login, vede una **pagina iniziale** (saluto, pulsante "Vai agli allenamenti", istruzioni brevi, pulsante "Contattami" che apre una chat WhatsApp col tuo numero — tutto configurabile dall'admin in Impostazioni); superata quella, compila un questionario standard (obiettivo, livello, infortuni/limitazioni, giorni disponibili, attrezzatura — modificabile in seguito) e poi vede un menu con **3 sezioni indipendenti** — Riscaldamento, Forza, Circuito — ognuna con la propria "prossima sessione" (o "non assegnato"/"programma completato" se non c'è nulla da fare). Le sezioni avanzano **indipendentemente**: completarne una non tocca le altre due, e finché una sessione non viene portata a termine resta la "prossima" — saltarla oggi significa semplicemente ritrovarla identica la volta dopo. Solo sul **Circuito** c'è un pulsante "Salta per oggi" esplicito (stesso effetto di non farlo: torna al menu senza avanzare). Una sessione già completata **non è ripetibile** (niente "Rifai" nel flusso reale).
+- **Atleta**: al primo accesso, dopo il login, vede una **pagina iniziale** (saluto, pulsante "Vai agli allenamenti", istruzioni brevi, pulsante "Contattami" che apre una chat WhatsApp col tuo numero — tutto configurabile dall'admin in Impostazioni); superata quella, compila un questionario standard (obiettivo, livello, infortuni/limitazioni, giorni disponibili, attrezzatura — modificabile in seguito) e poi vede un menu con **3 sezioni indipendenti** — Riscaldamento, Forza, Circuito — ognuna con la propria "prossima sessione" (o "non assegnato"/"programma completato" se non c'è nulla da fare). Le sezioni avanzano **indipendentemente**: completarne una non tocca le altre due, e finché una sessione non viene portata a termine resta la "prossima" — saltarla oggi significa semplicemente ritrovarla identica la volta dopo. Solo sul **Circuito** c'è un pulsante "Salta per oggi" esplicito (stesso effetto di non farlo: torna al menu senza avanzare). Una sessione già completata **non è ripetibile** (niente "Rifai" nel flusso reale). Dal menu può anche aprire **Profilo**: nome e cognome (prima li impostava solo l'admin all'invito) e i propri massimali — usati per calcolare in automatico il peso di lavoro nella parte di Forza.
 
 Gli atleti **non si autoregistrano**: li inviti tu dal pannello Atleti (email + nome opzionale), Supabase manda l'invito e l'atleta imposta la password al primo accesso tramite quel link.
 
 ## Cosa fa
 - **Libreria esercizi** — nome, URL GIF, rep e tempo di default, attrezzatura (corpo libero / 1-2 manubri / kettlebell / bilanciere / elastico). Importabile anche da CSV/Google Sheet.
 - **Programmi Riscaldamento** — sequenza ordinata di sessioni a corpo libero (N esercizi + round ciascuna), riusabile su più atleti — stessa forma/UX di Forza e Circuito. A differenza loro, un Programma Riscaldamento assegnato **ruota all'infinito** sulle sue sessioni: completata l'ultima si ricomincia dalla prima (non "finisce" mai).
-- **Programmi Forza** — sequenza ordinata di sessioni Forza (progressione), riusabile su più atleti. Ogni sessione: un solo esercizio, serie di riscaldamento specifico (avvicinamento al peso — reps + nota libera) + serie di lavoro a **percentuale del massimale** dell'atleta (peso calcolato automaticamente, mai a mano), ognuna anche impostabile come **AMRAP**.
+- **Programmi Forza** — sequenza ordinata di sessioni Forza (progressione), riusabile su più atleti. Ogni sessione: un solo esercizio, serie di riscaldamento specifico (avvicinamento al peso — reps + nota libera) + serie di lavoro a **percentuale del massimale** dell'atleta (peso calcolato automaticamente, mai a mano), ognuna anche impostabile come **AMRAP**. Il massimale lo inserisce l'**atleta stesso** dal suo Profilo (o tu, dal pannello Atleti) — collegato alla sessione tramite la "chiave massimale" impostata nell'editor (es. `back_squat`).
 - **Programmi Circuito** — sequenza ordinata di sessioni Circuito (progressione); ogni sessione ha **2 blocchi** con un riposo a cronometro tra i due.
 - **Assegnazione per atleta** — Riscaldamento, Forza e Circuito si assegnano **separatamente**, ciascuno con un menu a tendina (un Programma solo per sezione), dal pannello Atleti. Ognuna delle 3 sezioni ha la propria posizione di avanzamento: completare la Forza non tocca il Circuito né il Riscaldamento. Forza e Circuito **avanzano e si fermano** all'ultima sessione del programma assegnato (poi mostrano "programma completato"); il Riscaldamento **ruota all'infinito**. Le sessioni non sono righe salvate: si **assemblano al volo** dalla libreria assegnata, alla posizione corrente dell'atleta.
 - **Player** — a schermo intero, GIF di sfondo, controlli play/pausa/avanti/indietro, annunci vocali (Web Speech API del browser). Countdown per esercizi/serie; il **riposo tra blocchi è un cronometro che conta in su** (nessun tempo imposto: l'atleta preme avanti quando è pronto, vedendo quanto tempo è passato). Il livello di carico da usare (per esercizi con attrezzo, corpo libero escluso) lo **prescrivi tu** in fase di creazione — l'atleta lo vede a schermo insieme a nome esercizio e ripetizioni, non gli viene chiesto. L'unica cosa ancora annotata dall'atleta durante l'esecuzione: le ripetizioni fatte, a fine di una serie Max/AMRAP.
 
   Le annotazioni finiscono nello storico consultabile dal pannello Atleti. A fine sessione non c'è "Rifai": una sessione completata fa avanzare la sezione e non è ripetibile (solo il Circuito ha un "Salta per oggi" *prima* di iniziarla, per rimandarla senza segnarla come fatta).
-- **Pagina iniziale atleta** — prima schermata dopo il login, una volta per sessione di browser (non a ogni refresh, grazie a un flag in `sessionStorage`): saluto, pulsante grande "Vai agli allenamenti" (entra nel resto dell'app), un riquadro con le istruzioni e un pulsante "Contattami" che apre `wa.me/<numero>` in una nuova scheda. Testo e numero si modificano dal tab Impostazioni dell'admin, senza bisogno di deploy.
+- **Pagina iniziale atleta** — prima schermata a ogni apertura dell'app: saluto, pulsante grande "Vai agli allenamenti" (entra nel resto dell'app), un riquadro con le istruzioni e un pulsante "Contattami" che apre `wa.me/<numero>` in una nuova scheda. Testo e numero si modificano dal tab Impostazioni dell'admin, senza bisogno di deploy. Un pulsante "Home" nel menu allenamenti ci riporta.
+- **Profilo atleta** — nome e cognome (prima impostabile solo dall'admin all'invito) e i propri massimali, entrambi self-service. I massimali mostrati sono solo quelli usati dal Programma Forza assegnato in quel momento (niente da indovinare) e vengono usati per calcolare in automatico il peso di lavoro — non serve più che li inserisca l'admin.
 
 ## Struttura del codice
 ```
@@ -63,7 +66,7 @@ src/
     CircuitPrograms.jsx   CRUD programmi Circuito (sequenze di sessioni)
     AdminAthletes.jsx     inviti, assegnazione per sezione (riscald./forza/circuito), massimali, storico log
     AppSettings.jsx       testo istruzioni + numero WhatsApp mostrati nella pagina iniziale atleta
-  athlete/    Questionnaire + AthleteHome (pagina iniziale, poi menu 3 sezioni indipendenti, ciascuna con la propria prossima sessione)
+  athlete/    Questionnaire + Profile (nome + massimali self-service) + AthleteHome (pagina iniziale, poi menu 3 sezioni indipendenti, ciascuna con la propria prossima sessione)
   auth/       AuthProvider (sessione+ruolo), LoginScreen, SetPassword
 api/
   invite-athlete.js   funzione serverless Vercel: invita un atleta via email (service role key)
@@ -75,6 +78,8 @@ supabase/
   migration_warmup_programs.sql     idem, dopo la precedente — Riscaldamento come Programma (come Forza/Circuito)
   migration_app_settings.sql        idem, dopo la precedente — impostazioni globali (istruzioni + WhatsApp)
   migration_gif_storage.sql         idem, dopo la precedente — bucket Storage per le GIF esercizio
+  migration_gif_size_limit.sql      idem, dopo la precedente — limite dimensione bucket GIF
+  migration_athlete_profile.sql     idem, dopo la precedente — profilo atleta self-service (nome + massimali)
 scripts/
   migrate-gifs-to-storage.mjs   migrazione una tantum: sposta le GIF da Google Drive a Supabase Storage
 ```
