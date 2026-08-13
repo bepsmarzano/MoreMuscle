@@ -185,6 +185,29 @@ export function Player({ workout, onExit, onHome, onLog, onFinish, maxesByLiftKe
     return () => clearTimeout(t);
   }, [speak, announceStep]);
 
+  // schermo sempre acceso finché l'allenamento è a schermo intero — la causa
+  // più comune di "l'allenamento si interrompe in background" è lo spegnimento
+  // automatico dello schermo per inattività, non l'utente che cambia app di
+  // proposito. Il Wake Lock si rilascia da solo quando la scheda va in
+  // background (specifica del browser): lo richiediamo di nuovo al ritorno.
+  // Non supportato ovunque (es. alcune versioni iOS): fallisce in silenzio,
+  // non è un requisito per far funzionare l'allenamento.
+  useEffect(() => {
+    if (!("wakeLock" in navigator)) return;
+    let sentinel = null;
+    const acquire = async () => {
+      try { sentinel = await navigator.wakeLock.request("screen"); }
+      catch { /* niente di grave: lo schermo potrà spegnersi da solo */ }
+    };
+    acquire();
+    const onVisible = () => { if (document.visibilityState === "visible") acquire(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      sentinel?.release().catch(() => {});
+    };
+  }, []);
+
   const goTo = useCallback((i) => {
     if (i < 0 || i >= sequence.length) return;
     const s = sequence[i];
@@ -206,15 +229,26 @@ export function Player({ workout, onExit, onHome, onLog, onFinish, maxesByLiftKe
     else { setRunning(false); speak("Allenamento completato. Ottimo lavoro."); }
   };
 
+  // il browser mette in pausa/rallenta i setInterval quando la scheda va in
+  // background (schermo spento, altra app in primo piano): un tick non
+  // corrisponde più in modo affidabile a "è passato 1 secondo". Misuriamo il
+  // tempo reale trascorso dall'ultimo tick e lo usiamo come decremento — così
+  // al ritorno il countdown si allinea da solo invece di restare bloccato.
+  const lastTickRef = useRef(Date.now());
+
   useEffect(() => {
     if (!running) return;
+    lastTickRef.current = Date.now();
     const t = setInterval(() => {
+      const now = Date.now();
+      const elapsed = Math.max(1, Math.round((now - lastTickRef.current) / 1000));
+      lastTickRef.current = now;
       setRemaining((r) => {
         const current = sequence[idx];
         // il riposo è un cronometro che conta in su senza limite: l'atleta
         // preme "avanti" quando è pronto (nessun avviso "10 secondi", nessun
         // avanzamento automatico — vedi SkipForward più sotto).
-        if (current?.type === "rest") return r + 1;
+        if (current?.type === "rest") return r + elapsed;
 
         if (r === 11 && !announced10.current && idx + 1 < sequence.length) {
           announced10.current = true; speak("Mancano 10 secondi.");
@@ -233,7 +267,7 @@ export function Player({ workout, onExit, onHome, onLog, onFinish, maxesByLiftKe
             return s.type === "rest" ? 0 : s.ex.time;
           } else { setRunning(false); speak("Allenamento completato. Ottimo lavoro."); return 0; }
         }
-        return r - 1;
+        return Math.max(0, r - elapsed);
       });
     }, 1000);
     return () => clearInterval(t);
@@ -250,7 +284,7 @@ export function Player({ workout, onExit, onHome, onLog, onFinish, maxesByLiftKe
   // durante il riposo non c'è un target fisso da riempire: l'anello fa uno
   // "sweep" continuo di 60s (come una lancetta dei secondi) invece di
   // avvicinarsi a un traguardo che non esiste più.
-  const progress = isRest ? ((remaining % 60) / 60) * 100 : (total > 0 ? ((total - remaining) / total) * 100 : 0);
+  const progress = isRest ? ((remaining % 60) / 60) * 100 : (total > 0 ? Math.min(100, ((total - Math.max(0, remaining)) / total) * 100) : 0);
 
   if (finished) {
     return (
@@ -311,7 +345,7 @@ export function Player({ workout, onExit, onHome, onLog, onFinish, maxesByLiftKe
                   strokeLinecap="round" strokeDasharray={2 * Math.PI * 31}
                   strokeDashoffset={(2 * Math.PI * 31) * (1 - progress / 100)}
                   transform="rotate(-90 38 38)" style={{ transition: "stroke-dashoffset 1s linear" }} />
-                <text x="38" y="44" textAnchor="middle" fill="#fff" fontSize="21" fontWeight="700" fontFamily="system-ui">{remaining}</text>
+                <text x="38" y="44" textAnchor="middle" fill="#fff" fontSize="21" fontWeight="700" fontFamily="system-ui">{Math.max(0, remaining)}</text>
               </svg>
             </div>
             {isRest ? (
