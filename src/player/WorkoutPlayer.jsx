@@ -13,8 +13,6 @@ import { S, ExGif } from "../shared/ui.jsx";
 // percentuale del massimale, calcolata automaticamente).
 // ---------------------------------------------------------------------------
 
-const LOAD_LEVELS = ["Molto leggero", "Leggero", "Moderato", "Pesante", "Molto pesante"];
-
 export function buildSequence(w, maxesByLiftKey = {}) {
   const steps = [];
   w.blocks.forEach((block, bi) => {
@@ -49,12 +47,12 @@ export function buildSequence(w, maxesByLiftKey = {}) {
 }
 
 // "0 rep" = Max (standard o Forza, stessa convenzione: vedi blockEditors.jsx)
-// chiede all'atleta quante ne ha fatte davvero; un esercizio a manubri/
-// kettlebell/bilanciere del Circuito chiede il livello di carico usato.
+// chiede all'atleta quante ne ha fatte davvero — l'unica cosa ancora chiesta
+// a posteriori. Il carico da usare non si chiede più: lo prescrive l'admin
+// in fase di creazione (ex.loadLevel) e l'atleta lo vede insieme a nome/rep.
 function needsLog(step) {
   if (!step || step.type === "rest") return null;
   if (step.ex && step.ex.reps === 0) return { kind: "reps" };
-  if (step.type === "exercise" && step.ex.equipment && step.ex.equipment !== "bodyweight") return { kind: "load" };
   return null;
 }
 
@@ -118,7 +116,9 @@ export function Preview({ workout, onStart, onBack }) {
                   <ExGif src={ex.gif} alt={ex.name} style={S.previewImg} />
                   <div style={S.previewInfo}>
                     <div style={S.previewName}>{ex.name}</div>
-                    <div style={S.previewMeta}>{ex.reps === 0 ? "Max" : ex.reps > 1 ? `${ex.reps} rep` : "hold"} · {ex.time}s</div>
+                    <div style={S.previewMeta}>
+                      {ex.reps === 0 ? "Max" : ex.reps > 1 ? `${ex.reps} rep` : "hold"} · {ex.time}s{ex.loadLevel ? ` · ${ex.loadLevel}` : ""}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -132,10 +132,11 @@ export function Preview({ workout, onStart, onBack }) {
 }
 
 // ---- PLAYER ----------------------------------------------------------------
-// onLog({ exerciseName, reps }) o ({ exerciseName, loadLabel }) — chiamato
-// quando l'atleta annota una serie AMRAP di Forza o il carico usato in un
-// esercizio a manubri/kettlebell del Circuito. maxesByLiftKey: { [liftKey]:
-// kg } dei massimali noti, per calcolare i pesi di lavoro della Forza.
+// onLog({ exerciseName, reps }) — chiamato quando l'atleta annota una serie
+// Max/AMRAP (standard o Forza). Il carico da usare non si annota più: è
+// prescritto dall'admin (ex.loadLevel) e mostrato all'atleta, non chiesto.
+// maxesByLiftKey: { [liftKey]: kg } dei massimali noti, per calcolare i pesi
+// di lavoro della Forza.
 // onHome (opzionale): torna dritto al menu principale, non solo all'anteprima
 // di questa sezione — un'azione client-side pura, senza chiamate di rete,
 // sempre disponibile anche se il completamento della sessione dovesse fallire.
@@ -143,13 +144,13 @@ export function Player({ workout, onExit, onHome, onLog, onFinish, maxesByLiftKe
   const sequence = useRef(buildSequence(workout, maxesByLiftKey)).current;
   const [idx, setIdx] = useState(0);
   const [remaining, setRemaining] = useState(sequence[0]?.type === "rest" ? 0 : (sequence[0]?.ex?.time ?? 0));
-  const [running, setRunning] = useState(false);
+  const [running, setRunning] = useState(true); // parte subito: niente più schermata "Sta per iniziare" di mezzo
   const [voiceOn, setVoiceOn] = useState(true);
-  const [started, setStarted] = useState(false);
-  const [pendingLog, setPendingLog] = useState(null); // { kind: "reps"|"load", stepIndex }
+  const [pendingLog, setPendingLog] = useState(null); // { kind: "reps", stepIndex } — solo per le serie Max/AMRAP
   const [repsInput, setRepsInput] = useState("");
   const speak = useSpeech(voiceOn);
   const announced10 = useRef(false);
+  const introSpoken = useRef(false);
 
   const step = sequence[idx];
   const isRest = step?.type === "rest";
@@ -169,14 +170,20 @@ export function Player({ workout, onExit, onHome, onLog, onFinish, maxesByLiftKe
       return;
     }
     const tail = s.ex.reps === 0 ? "Fai il massimo numero di ripetizioni possibile." : s.ex.reps > 1 ? `Fai ${s.ex.reps} ripetizioni.` : "Mantieni la posizione.";
-    speak(`${s.ex.name}. ${tail}`);
+    const load = s.ex.loadLevel ? ` Carico: ${s.ex.loadLevel}.` : "";
+    speak(`${s.ex.name}. ${tail}${load}`);
   }, [sequence, speak]);
 
-  const start = () => {
-    setStarted(true); setRunning(true);
+  // annuncio di apertura, una volta sola al mount (il tap su "Inizia" nell'anteprima
+  // è già il gesto utente richiesto da iOS per sbloccare la sintesi vocale — non
+  // serve più un secondo tap su "Sta per iniziare" dentro al Player).
+  useEffect(() => {
+    if (introSpoken.current) return;
+    introSpoken.current = true;
     speak("Let's go!");
-    setTimeout(() => announceStep(0), 2200);
-  };
+    const t = setTimeout(() => announceStep(0), 2200);
+    return () => clearTimeout(t);
+  }, [speak, announceStep]);
 
   const goTo = useCallback((i) => {
     if (i < 0 || i >= sequence.length) return;
@@ -184,15 +191,14 @@ export function Player({ workout, onExit, onHome, onLog, onFinish, maxesByLiftKe
     announced10.current = false;
     setIdx(i);
     setRemaining(s.type === "rest" ? 0 : s.ex.time);
-    if (started) announceStep(i);
-  }, [sequence, started, announceStep]);
+    announceStep(i);
+  }, [sequence, announceStep]);
 
-  // chiamato dal form di annotazione (rep AMRAP o livello di carico): salva,
+  // chiamato dal form di annotazione (rep di una serie Max/AMRAP): salva,
   // poi riprende dallo step successivo (o chiude l'allenamento se era l'ultimo)
   const resolveLog = (value) => {
     const s = sequence[pendingLog.stepIndex];
-    if (pendingLog.kind === "reps") onLog?.({ exerciseName: s.ex.name, reps: Number(value) || 0 });
-    else onLog?.({ exerciseName: s.ex.name, loadLabel: value });
+    onLog?.({ exerciseName: s.ex.name, reps: Number(value) || 0 });
     setPendingLog(null);
     setRepsInput("");
     const next = pendingLog.stepIndex + 1;
@@ -201,7 +207,7 @@ export function Player({ workout, onExit, onHome, onLog, onFinish, maxesByLiftKe
   };
 
   useEffect(() => {
-    if (!running || !started) return;
+    if (!running) return;
     const t = setInterval(() => {
       setRemaining((r) => {
         const current = sequence[idx];
@@ -231,9 +237,9 @@ export function Player({ workout, onExit, onHome, onLog, onFinish, maxesByLiftKe
       });
     }, 1000);
     return () => clearInterval(t);
-  }, [running, started, idx, sequence, speak, announceStep]);
+  }, [running, idx, sequence, speak, announceStep]);
 
-  const finished = started && !running && !pendingLog && idx === sequence.length - 1 && remaining === 0;
+  const finished = !running && !pendingLog && idx === sequence.length - 1 && remaining === 0;
 
   // notifica il chiamante una volta per ogni allenamento completato (es.
   // l'atleta: avanza alla sessione successiva del piano). Se rifà
@@ -245,23 +251,6 @@ export function Player({ workout, onExit, onHome, onLog, onFinish, maxesByLiftKe
   // "sweep" continuo di 60s (come una lancetta dei secondi) invece di
   // avvicinarsi a un traguardo che non esiste più.
   const progress = isRest ? ((remaining % 60) / 60) * 100 : (total > 0 ? ((total - remaining) / total) * 100 : 0);
-
-  if (!started) {
-    return (
-      <div style={S.playerFull}>
-        <div style={S.startCard}>
-          <img src="/logo.png" alt="Viltrum Fitness" style={S.logoImgBig} />
-          <div style={S.startTitle}>{workout.name}</div>
-          <div style={S.startMeta}>{sequence.filter((s) => s.type === "exercise").length} esercizi · {workout.blocks.length} blocchi</div>
-          <button style={S.startBtn} onClick={start}><Play size={20} /> Sta per iniziare</button>
-          <button style={S.ghostBtn} onClick={onExit}><ChevronLeft size={16} /> Torna all'anteprima</button>
-          {onHome && (
-            <button style={{ ...S.ghostBtn, marginTop: 10 }} onClick={onHome}><Home size={16} /> Torna alla home</button>
-          )}
-        </div>
-      </div>
-    );
-  }
 
   if (finished) {
     return (
@@ -338,7 +327,12 @@ export function Player({ workout, onExit, onHome, onLog, onFinish, maxesByLiftKe
                 ].filter(Boolean).join(" · ")}
               </div>
             ) : (
-              <div style={S.exStageReps}>{step.ex.reps === 0 ? "Fai il massimo numero di rep" : step.ex.reps > 1 ? `Fai ${step.ex.reps} rep` : "Mantieni la posizione"}</div>
+              <div style={S.exStageReps}>
+                {[
+                  step.ex.reps === 0 ? "Fai il massimo numero di rep" : step.ex.reps > 1 ? `Fai ${step.ex.reps} rep` : "Mantieni la posizione",
+                  step.ex.loadLevel ? `Carico: ${step.ex.loadLevel}` : null,
+                ].filter(Boolean).join(" · ")}
+              </div>
             )}
           </div>
         </div>
@@ -366,23 +360,13 @@ export function Player({ workout, onExit, onHome, onLog, onFinish, maxesByLiftKe
         <div style={S.modalWrap}>
           <div style={S.modal} onClick={(e) => e.stopPropagation()}>
             <div style={S.modalHead}>
-              <span style={S.modalTitle}>{pendingLog.kind === "reps" ? "Quante ripetizioni hai fatto?" : "Che carico hai usato?"}</span>
+              <span style={S.modalTitle}>Quante ripetizioni hai fatto?</span>
             </div>
-            {pendingLog.kind === "reps" ? (
-              <>
-                <input type="number" min={0} autoFocus style={S.fieldInput} value={repsInput}
-                  onChange={(e) => setRepsInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && resolveLog(repsInput)} />
-                <button style={{ ...S.primaryBtn, width: "100%", justifyContent: "center", marginTop: 14 }} onClick={() => resolveLog(repsInput)}>
-                  <Check size={16} /> Continua
-                </button>
-              </>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {LOAD_LEVELS.map((lvl) => (
-                  <button key={lvl} style={S.dashedBtn} onClick={() => resolveLog(lvl)}>{lvl}</button>
-                ))}
-              </div>
-            )}
+            <input type="number" min={0} autoFocus style={S.fieldInput} value={repsInput}
+              onChange={(e) => setRepsInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && resolveLog(repsInput)} />
+            <button style={{ ...S.primaryBtn, width: "100%", justifyContent: "center", marginTop: 14 }} onClick={() => resolveLog(repsInput)}>
+              <Check size={16} /> Continua
+            </button>
           </div>
         </div>
       )}

@@ -13,6 +13,7 @@ React 18 + Vite + Supabase (auth + Postgres) + Vercel (deploy + funzione serverl
    - [`supabase/migration_split_sections.sql`](supabase/migration_split_sections.sql) — ritira il concetto di "Piano": Riscaldamento/Forza/Circuito diventano 3 assegnazioni indipendenti per atleta, ognuna con la propria posizione di avanzamento.
    - [`supabase/migration_warmup_programs.sql`](supabase/migration_warmup_programs.sql) — il Riscaldamento diventa un "Programma" riusabile (sequenza ordinata di sessioni) come Forza/Circuito, assegnato con un solo menu a tendina invece di una rotazione ad-hoc per atleta.
    - [`supabase/migration_app_settings.sql`](supabase/migration_app_settings.sql) — impostazioni globali (testo istruzioni + numero WhatsApp) mostrate nella pagina iniziale dell'atleta.
+   - [`supabase/migration_gif_storage.sql`](supabase/migration_gif_storage.sql) — bucket Supabase Storage per le GIF esercizio (al posto degli hotlink a Google Drive/Photos, lenti e non affidabili). Dopo questa, esegui anche lo script di migrazione dati — vedi [Spostare le GIF su Supabase Storage](#spostare-le-gif-su-supabase-storage) più sotto.
 2. **Variabili d'ambiente**: copia `.env.local.example` in `.env.local` e riempilo con Project URL + anon public key (Supabase → Project Settings → API).
    ```bash
    cp .env.local.example .env.local
@@ -43,9 +44,7 @@ Gli atleti **non si autoregistrano**: li inviti tu dal pannello Atleti (email + 
 - **Programmi Forza** — sequenza ordinata di sessioni Forza (progressione), riusabile su più atleti. Ogni sessione: un solo esercizio, serie di riscaldamento specifico (avvicinamento al peso — reps + nota libera) + serie di lavoro a **percentuale del massimale** dell'atleta (peso calcolato automaticamente, mai a mano), ognuna anche impostabile come **AMRAP**.
 - **Programmi Circuito** — sequenza ordinata di sessioni Circuito (progressione); ogni sessione ha **2 blocchi** con un riposo a cronometro tra i due.
 - **Assegnazione per atleta** — Riscaldamento, Forza e Circuito si assegnano **separatamente**, ciascuno con un menu a tendina (un Programma solo per sezione), dal pannello Atleti. Ognuna delle 3 sezioni ha la propria posizione di avanzamento: completare la Forza non tocca il Circuito né il Riscaldamento. Forza e Circuito **avanzano e si fermano** all'ultima sessione del programma assegnato (poi mostrano "programma completato"); il Riscaldamento **ruota all'infinito**. Le sessioni non sono righe salvate: si **assemblano al volo** dalla libreria assegnata, alla posizione corrente dell'atleta.
-- **Player** — a schermo intero, GIF di sfondo, controlli play/pausa/avanti/indietro, annunci vocali (Web Speech API del browser). Countdown per esercizi/serie; il **riposo tra blocchi è un cronometro che conta in su** (nessun tempo imposto: l'atleta preme avanti quando è pronto, vedendo quanto tempo è passato). Durante l'esecuzione, l'app chiede all'atleta di annotare:
-  - le ripetizioni fatte, a fine di una serie di lavoro AMRAP
-  - il livello di carico usato (corpo libero escluso), a fine di un esercizio con attrezzo nel Circuito
+- **Player** — a schermo intero, GIF di sfondo, controlli play/pausa/avanti/indietro, annunci vocali (Web Speech API del browser). Countdown per esercizi/serie; il **riposo tra blocchi è un cronometro che conta in su** (nessun tempo imposto: l'atleta preme avanti quando è pronto, vedendo quanto tempo è passato). Il livello di carico da usare (per esercizi con attrezzo, corpo libero escluso) lo **prescrivi tu** in fase di creazione — l'atleta lo vede a schermo insieme a nome esercizio e ripetizioni, non gli viene chiesto. L'unica cosa ancora annotata dall'atleta durante l'esecuzione: le ripetizioni fatte, a fine di una serie Max/AMRAP.
 
   Le annotazioni finiscono nello storico consultabile dal pannello Atleti. A fine sessione non c'è "Rifai": una sessione completata fa avanzare la sezione e non è ripetibile (solo il Circuito ha un "Salta per oggi" *prima* di iniziarla, per rimandarla senza segnarla come fatta).
 - **Pagina iniziale atleta** — prima schermata dopo il login, una volta per sessione di browser (non a ogni refresh, grazie a un flag in `sessionStorage`): saluto, pulsante grande "Vai agli allenamenti" (entra nel resto dell'app), un riquadro con le istruzioni e un pulsante "Contattami" che apre `wa.me/<numero>` in una nuova scheda. Testo e numero si modificano dal tab Impostazioni dell'admin, senza bisogno di deploy.
@@ -75,6 +74,9 @@ supabase/
   migration_split_sections.sql      idem, dopo le tre precedenti — ritira "Piani", 3 sezioni indipendenti
   migration_warmup_programs.sql     idem, dopo la precedente — Riscaldamento come Programma (come Forza/Circuito)
   migration_app_settings.sql        idem, dopo la precedente — impostazioni globali (istruzioni + WhatsApp)
+  migration_gif_storage.sql         idem, dopo la precedente — bucket Storage per le GIF esercizio
+scripts/
+  migrate-gifs-to-storage.mjs   migrazione una tantum: sposta le GIF da Google Drive a Supabase Storage
 ```
 
 ## Build produzione
@@ -90,8 +92,23 @@ Serve per far funzionare gli inviti via email (la funzione in `api/invite-athlet
 
 Per testare l'invito in locale senza deployare: `vercel dev` (richiede `vercel login` + `vercel env pull`).
 
+## Spostare le GIF su Supabase Storage
+Le GIF caricate finora sono hotlink a Google Drive/Photos — comodo per importarle la prima volta, ma quel servizio non è pensato per essere incorporato in un'app: a volte risponde lento, e le intestazioni di cache che manda non garantiscono che il browser le tenga salvate tra una sessione e l'altra. Questa migrazione le scarica una volta e le ricarica sul nostro Storage Supabase (bucket `exercise-gifs`, pubblico), poi aggiorna sia la libreria esercizi sia le copie già salvate dentro ai Programmi Riscaldamento/Forza/Circuito (ogni sessione porta con sé la propria copia del link GIF al momento in cui è stata composta, quindi cambiare solo la libreria non basterebbe). **Non serve nessuna modifica al codice**: i link restano semplici URL, solo il dominio cambia.
+
+1. Esegui [`supabase/migration_gif_storage.sql`](supabase/migration_gif_storage.sql) nel SQL Editor (crea il bucket).
+2. Crea un file **`.env.migration.local`** nella cartella del progetto (finisce da solo in `.gitignore` grazie al pattern `*.local` — non va mai committato) con dentro:
+   ```
+   SUPABASE_SERVICE_ROLE_KEY=eyJ...
+   ```
+   (la trovi su Supabase → Project Settings → API → *service_role* — la stessa chiave usata per Vercel, mai in `.env.local`).
+3. Lancia:
+   ```bash
+   npm run migrate:gifs
+   ```
+   Scarica e ricarica ogni GIF non ancora migrata, stampa un riepilogo (quante fatte, quali eventualmente fallite — di solito link ormai morti, da controllare a mano). Sicuro da rilanciare più volte: le GIF già su Supabase Storage vengono riconosciute e saltate.
+
 ## Note
-- Le GIF sono URL esterni (Google Drive/Photos funzionano ma a volte falliscono in modo transitorio: l'app riprova un paio di volte prima di mostrare un placeholder — vedi `ExGif` in `src/shared/ui.jsx`).
-- La voce usa la sintesi del browser (Web Speech API): su iOS parte solo dopo un tap dell'utente (il pulsante "Sta per iniziare" va bene).
+- Le GIF sono file su Supabase Storage (bucket `exercise-gifs`, dopo la migrazione sopra) — prima erano hotlink a Google Drive/Photos, a volte lenti/inaffidabili per l'incorporamento; l'app riprova un paio di volte prima di mostrare un placeholder in ogni caso — vedi `ExGif` in `src/shared/ui.jsx`.
+- La voce usa la sintesi del browser (Web Speech API): su iOS parte solo dopo un tap dell'utente — il tap su "Inizia" nell'anteprima è il gesto che la sblocca (il Player parte direttamente, niente schermata "Sta per iniziare" di mezzo).
 - Ogni atleta ha 3 assegnazioni indipendenti (`profiles.assigned_warmup_program_id`+`warmup_position`, `assigned_strength_program_id`+`strength_position`, `assigned_circuit_program_id`+`circuit_position`) — niente rami/percorsi alternativi dentro una sezione, ma le 3 sezioni non si influenzano a vicenda. Le sessioni si generano al volo dalla libreria assegnata, non sono righe salvate: eliminare/modificare un Programma assegnato cambia cosa vede l'atleta la prossima volta.
 - Le percentuali/i massimali non richiedono mai un inserimento manuale di kg da parte dell'atleta; l'appuntamento di vendita resta fuori dall'app.

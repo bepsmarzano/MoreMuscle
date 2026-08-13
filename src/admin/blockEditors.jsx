@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Plus, Trash2, X, Library, Search } from "lucide-react";
-import { S, uid, EQUIPMENT_LABELS } from "../shared/ui.jsx";
+import { S, uid, EQUIPMENT_LABELS, LOAD_LEVELS } from "../shared/ui.jsx";
 
 // "0 rep" significa "Max" (massime ripetizioni possibili, annotate
 // dall'atleta a fine step) — un'unica convenzione ovunque si entrano le rep,
@@ -84,6 +84,16 @@ export function StandardBlockEditor({ block, onPatch, library }) {
                   {Object.entries(EQUIPMENT_LABELS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
                 </select>
               </label>
+              {/* carico PRESCRITTO da te, non chiesto all'atleta a fine esercizio — lui lo vede e basta, come rep/tempo */}
+              {ex.equipment && ex.equipment !== "bodyweight" && (
+                <label style={S.miniLbl}>carico
+                  <select style={{ ...S.numInputSm, width: "auto" }} value={ex.loadLevel || ""}
+                    onChange={(e) => updateExercise(ei, { loadLevel: e.target.value || null })}>
+                    <option value="">—</option>
+                    {LOAD_LEVELS.map((lvl) => <option key={lvl} value={lvl}>{lvl}</option>)}
+                  </select>
+                </label>
+              )}
             </div>
           </div>
           <button style={S.iconBtn} onClick={() => removeExercise(ei)}><Trash2 size={15} /></button>

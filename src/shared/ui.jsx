@@ -6,9 +6,14 @@ import { useRef } from "react";
 
 export const uid = () => Math.random().toString(36).slice(2, 9);
 
-// attrezzatura di un esercizio: determina se/come il Circuito chiede
-// all'atleta il livello di carico usato (bodyweight = mai chiesto)
+// attrezzatura di un esercizio (bodyweight = corpo libero, niente carico da
+// prescrivere/mostrare)
 export const EQUIPMENT_LABELS = { bodyweight: "Corpo libero", db1: "1 manubrio", db2: "2 manubri", kb: "Kettlebell", bb: "Bilanciere", band: "Elastico" };
+
+// livello di carico da usare, PRESCRITTO dall'admin in fase di creazione (non
+// più chiesto all'atleta a fine esercizio): stessa scala per tutti gli
+// esercizi con attrezzo, mostrata all'atleta insieme a nome/rep.
+export const LOAD_LEVELS = ["Molto leggero", "Leggero", "Moderato", "Pesante", "Molto pesante"];
 
 // font dei nomi esercizio (condensato, bold, tutto maiuscolo): Gotham
 // Condensed Bold è un font commerciale, non incorporabile gratuitamente —
@@ -47,8 +52,8 @@ export function ExGif({ src, alt, style, onClick }) {
 export const globalCss = `
 * { box-sizing: border-box; }
 body { margin: 0; background: #0d0d0d; }
-input, textarea, select { outline: none; font-family: inherit; }
-button { cursor: pointer; font-family: inherit; }
+input, textarea, select { outline: none; font-family: inherit; color: inherit; }
+button { cursor: pointer; font-family: inherit; color: inherit; }
 button:disabled { opacity: .3; cursor: not-allowed; }
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }

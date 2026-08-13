@@ -1,0 +1,12 @@
+{
+  "name": "MORE MUSCLE",
+  "short_name": "MORE MUSCLE",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d0d0d",
+  "theme_color": "#0d0d0d",
+  "icons": [
+    { "src": "/logo.png", "sizes": "500x500", "type": "image/png", "purpose": "any" },
+    { "src": "/logo.png", "sizes": "500x500", "type": "image/png", "purpose": "maskable" }
+  ]
+}
