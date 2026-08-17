@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
 // ---------------------------------------------------------------------------
 // Pezzi condivisi da tutta l'app: stile visuale, placeholder GIF, id locali.
@@ -26,15 +26,32 @@ export const PLACEHOLDER_GIF =
     `<svg xmlns='http://www.w3.org/2000/svg' width='400' height='300'><rect width='400' height='300' fill='#1a1a1a'/><text x='50%' y='48%' fill='#666' font-family='sans-serif' font-size='16' text-anchor='middle'>GIF esercizio</text><text x='50%' y='58%' fill='#444' font-family='sans-serif' font-size='12' text-anchor='middle'>incolla URL</text></svg>`
   );
 
-// <img> per le GIF esercizio: caricamento lazy + niente referrer (i link Google
-// Drive/Photos a volte rifiutano la richiesta in base al referrer) + un retry
-// automatico prima di arrendersi al placeholder — i link lh3.googleusercontent.com
-// falliscono a volte in modo transitorio, specie quando ne carichi tanti insieme.
+const isVideoSrc = (src) => typeof src === "string" && /\.mp4(\?|$)/i.test(src);
+
+// mostra la "GIF" esercizio — oggi in realtà quasi sempre un video MP4
+// (convertito dalle GIF originali: stesso aspetto, 30-50 volte più leggero,
+// vedi scripts/migrate-gifs-to-video.mjs), ma capisce anche una vera GIF
+// residua (link non ancora convertito, o incollato a mano dall'admin).
+// Video: parte/si ripete da solo come faceva la GIF, silenzioso.
+// GIF: caricamento lazy + niente referrer (i link Google Drive/Photos a
+// volte rifiutano la richiesta in base al referrer) + un retry automatico
+// prima di arrendersi al placeholder — falliscono a volte in modo
+// transitorio, specie quando se ne carica tante insieme.
 // fetchPriority: "high" per quella davvero a schermo ora (es. il video del
-// Player) — così non aspetta mai dietro alle GIF pre-caricate in background
+// Player) — così non aspetta mai dietro a quelle pre-caricate in background
 // per i prossimi esercizi (vedi prefetchGifs più sotto).
 export function ExGif({ src, alt, style, onClick, fetchPriority }) {
   const retries = useRef(0);
+  const [videoFailed, setVideoFailed] = useState(false);
+
+  if (isVideoSrc(src) && !videoFailed) {
+    return (
+      <video src={src} style={style} onClick={onClick}
+        autoPlay loop muted playsInline preload="auto"
+        onError={() => setVideoFailed(true)} fetchPriority={fetchPriority || "auto"} />
+    );
+  }
+
   const handleError = (e) => {
     const img = e.currentTarget;
     if (src && retries.current < 2) {
@@ -47,25 +64,24 @@ export function ExGif({ src, alt, style, onClick, fetchPriority }) {
     }
   };
   return (
-    <img src={src || PLACEHOLDER_GIF} alt={alt} style={style} onClick={onClick}
+    <img src={(videoFailed ? null : src) || PLACEHOLDER_GIF} alt={alt} style={style} onClick={onClick}
       loading="lazy" referrerPolicy="no-referrer" onError={handleError} fetchPriority={fetchPriority || "auto"} />
   );
 }
 
-// pre-scarica GIF in background, senza mostrarle: le fa finire nella cache
-// del browser (e nel Service Worker, se attivo) prima che l'atleta arrivi
-// davvero a quell'esercizio — usato per avere pronto il prossimo allenamento
-// invece di scaricare esercizio per esercizio durante l'allenamento stesso.
-// priority: "low" di default (di proposito — non deve mai competere con una
-// GIF che serve ORA, tipo il video in corso nel Player, che chiede "high"
-// tramite ExGif) — passa "high" solo per le prime, più urgenti da avere pronte.
-// Un errore su una singola GIF (link rotto) non deve fermare le altre.
+// pre-scarica le GIF/video esercizio in background, senza mostrarli: li fa
+// finire nella cache del browser (e nel Service Worker, se attivo) prima che
+// l'atleta arrivi davvero a quell'esercizio — usato per avere pronto il
+// prossimo allenamento invece di scaricare esercizio per esercizio durante
+// l'allenamento stesso. fetch() invece di new Image(): funziona per
+// qualunque tipo di file (i video non si pre-caricano con un tag Image).
+// priority: "low" di default (di proposito — non deve mai competere con
+// quello che serve ORA, tipo il video in corso nel Player, che chiede "high"
+// tramite ExGif) — passa "high" solo per i primi, più urgenti da avere pronti.
+// Un errore su un singolo file (link rotto) non deve fermare gli altri.
 export function prefetchGifs(urls, priority = "low") {
   urls.filter(Boolean).forEach((url) => {
-    const img = new Image();
-    img.onerror = () => {}; // silenzioso: se fallisce qui, ExGif riproverà comunque quando servirà davvero
-    img.fetchPriority = priority;
-    img.src = url;
+    fetch(url, { priority }).catch(() => {}); // silenzioso: se fallisce qui, ExGif riproverà comunque quando servirà davvero
   });
 }
 

@@ -1,7 +1,17 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { KeyRound } from "lucide-react";
 import { S, globalCss } from "../shared/ui.jsx";
 import { supabase } from "../lib/supabaseClient.js";
+
+// il link di invito è monouso: se è già stato aperto in precedenza (anche
+// per errore, es. da uno scanner email o un tap doppio) o è scaduto,
+// detectSessionInUrl non riesce a stabilire una sessione — invece del
+// messaggio grezzo di Supabase ("Auth session missing!"), qualcosa che
+// l'atleta capisce e sa come risolvere.
+const friendlyAuthError = (msg) =>
+  msg && /session/i.test(msg)
+    ? "Questo link non è più valido — probabilmente è già stato aperto in precedenza, o è scaduto. Chiedi al tuo allenatore di mandartene uno nuovo."
+    : msg || "Errore sconosciuto.";
 
 // Pagina mostrata quando l'URL è /set-password: ci si arriva dal link di
 // invito via email, che supabase-js trasforma già in una sessione valida
@@ -13,6 +23,21 @@ export default function SetPassword() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
+  const [checkingLink, setCheckingLink] = useState(true);
+  const [linkValid, setLinkValid] = useState(false);
+
+  // verifica SUBITO se il link ha creato una sessione valida, invece di
+  // scoprirlo solo dopo che l'atleta ha già compilato il modulo — getSession()
+  // attende comunque che detectSessionInUrl abbia finito, quindi il risultato
+  // qui è già quello definitivo.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      if (alive) { setLinkValid(!!data?.session); setCheckingLink(false); }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -21,13 +46,39 @@ export default function SetPassword() {
     setBusy(true); setError("");
     const { error } = await supabase.auth.updateUser({ password });
     setBusy(false);
-    if (error) { setError(error.message); return; }
+    if (error) { setError(friendlyAuthError(error.message)); return; }
     setDone(true);
     // tolto /set-password dall'URL e si ricarica: l'AuthProvider riparte da
     // capo e, con la sessione già valida, indirizza subito alla vista giusta.
     window.history.replaceState({}, "", "/");
     window.location.reload();
   };
+
+  if (checkingLink) {
+    return (
+      <div style={S.app}>
+        <style>{globalCss}</style>
+        <div style={S.authWrap}><p style={S.muted}>Verifica del link…</p></div>
+      </div>
+    );
+  }
+
+  if (!linkValid) {
+    return (
+      <div style={S.app}>
+        <style>{globalCss}</style>
+        <div style={S.authWrap}>
+          <div style={S.authCard}>
+            <img src="/logo.png" alt="Viltrum Fitness" style={S.logoImgBig} />
+            <div style={S.authTitle}>Link non valido</div>
+            <p style={S.authSub}>
+              Questo link non è più valido — probabilmente è già stato aperto in precedenza, o è scaduto. Chiedi al tuo allenatore di mandartene uno nuovo.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={S.app}>
