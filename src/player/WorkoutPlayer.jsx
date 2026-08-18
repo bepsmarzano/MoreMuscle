@@ -141,8 +141,22 @@ function useSpeech(enabled) {
   }, [enabled, speakBrowser]);
 }
 
+// audio silenzioso minimo (1 sample), usato solo per "sbloccare" la
+// riproduzione: un <audio> vero (a differenza della sintesi vocale del
+// browser) su molti browser mobile parte solo se play() viene chiamato
+// nello stesso gesto utente — qui il primo annuncio arriva dopo una
+// richiesta di rete (fetch dell'mp3 ElevenLabs), quindi troppo tardi per
+// contare come "dentro" al tap. Riprodurne uno vero (anche silenzioso, anche
+// se scartato subito) nel click su "Inizia" sblocca la riproduzione audio
+// per il resto della sessione, prima che serva davvero.
+const SILENT_AUDIO = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
+function unlockAudioPlayback() {
+  try { new Audio(SILENT_AUDIO).play().catch(() => {}); } catch { /* niente da fare, si tenterà comunque più tardi */ }
+}
+
 // ---- PREVIEW ---------------------------------------------------------------
 export function Preview({ workout, onStart, onBack }) {
+  const start = () => { unlockAudioPlayback(); onStart(); };
   return (
     <div>
       <div style={S.sectionRow}>
@@ -152,7 +166,7 @@ export function Preview({ workout, onStart, onBack }) {
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           {onBack && <button style={S.ghostBtn} onClick={onBack}><ChevronLeft size={16} /> Indietro</button>}
-          <button style={S.primaryBtnLg} onClick={onStart}><Play size={18} /> Inizia</button>
+          <button style={S.primaryBtnLg} onClick={start}><Play size={18} /> Inizia</button>
         </div>
       </div>
 
