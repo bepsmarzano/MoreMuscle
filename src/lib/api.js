@@ -250,6 +250,24 @@ export async function deleteAthlete(athleteId) {
   return body;
 }
 
+// ---- voce annunci Player (ElevenLabs, con cache lato server) ---------------
+// vedi api/tts.js: genera l'audio con ElevenLabs solo la prima volta che
+// sente questa frase esatta, poi la riserve per sempre dal bucket Storage.
+export async function getSpokenAudioUrl(text) {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const token = sessionData?.session?.access_token;
+  if (!token) throw new Error("Sessione non valida.");
+  const res = await fetch("/api/tts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ text }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || !body?.url) throw new Error(body?.error || "Voce non disponibile.");
+  return body.url;
+}
+
 // ---- questionario (atleta) -----------------------------------------------------
 export async function getQuestionnaire(athleteId) {
   const { data, error } = await supabase.from("questionnaire_responses").select("*").eq("athlete_id", athleteId).maybeSingle();

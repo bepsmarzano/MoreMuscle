@@ -81,6 +81,7 @@ supabase/
   migration_gif_storage.sql         idem, dopo la precedente — bucket Storage per le GIF esercizio
   migration_gif_size_limit.sql      idem, dopo la precedente — limite dimensione bucket GIF
   migration_athlete_profile.sql     idem, dopo la precedente — profilo atleta self-service (nome + massimali)
+  migration_tts_cache.sql           idem, dopo la precedente — bucket Storage per la cache voce ElevenLabs
 scripts/
   migrate-gifs-to-storage.mjs   migrazione una tantum: sposta le GIF da Google Drive a Supabase Storage
   migrate-gifs-to-video.mjs     migrazione una tantum: converte le GIF in video MP4 (molto più leggeri)
@@ -93,9 +94,12 @@ npm run preview    # anteprima del build
 ```
 
 ## Deploy (Vercel)
-Serve per far funzionare gli inviti via email (la funzione in `api/invite-athlete.js` non è servita da `vite dev`). Sul progetto Vercel imposta:
+Serve per far funzionare gli inviti via email e la voce del Player (le funzioni in `/api` non sono servite da `vite dev`). Sul progetto Vercel imposta:
 - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` — stessi valori di `.env.local`
 - `SUPABASE_SERVICE_ROLE_KEY` — da Supabase → Project Settings → API → *service_role* (**mai** in `.env.local`, **mai** con prefisso `VITE_`)
+- `ELEVENLABS_API_KEY` — da ElevenLabs → Settings → API Keys (**mai** con prefisso `VITE_`: la usa solo `api/tts.js`, mai il browser)
+- `ELEVENLABS_VOICE_ID` — voice ID scelto dalla Voice Library di ElevenLabs (voce unica per tutti, non selezionabile dall'utente)
+- `ELEVENLABS_MODEL_ID` — opzionale, default `eleven_multilingual_v2` se non impostata
 
 Per testare l'invito in locale senza deployare: `vercel dev` (richiede `vercel login` + `vercel env pull`).
 
@@ -131,7 +135,7 @@ Anche spostate su Supabase Storage, le GIF restano un formato pesante: usano una
 - Gli esercizi sono video MP4 su Supabase Storage (bucket `exercise-gifs`, dopo entrambe le migrazioni sopra) — prima GIF, prima ancora hotlink a Google Drive/Photos. `ExGif` in `src/shared/ui.jsx` riconosce da solo se un link punta a un video o a un'immagine (in base all'estensione) e rende `<video autoplay loop muted>` o `<img>` di conseguenza; l'app riprova un paio di volte prima di mostrare un placeholder in ogni caso.
 - **Pre-caricamento con priorità**: appena l'atleta apre l'app, `AthleteHome` pre-scarica in background i video dei prossimi allenamenti delle 3 sezioni (`prefetchGifs`, via `fetch()` — funziona per video e immagini indifferentemente) — Riscaldamento poi Forza poi Circuito (l'ordine tipico in palestra), con le prime in assoluto ad alta priorità e il resto a bassa. Il video davvero a schermo nel Player (`fetchPriority="high"` su `ExGif`) ha comunque sempre la precedenza: il pre-caricamento in background non lo passa mai avanti.
 - **Service Worker** (`vite-plugin-pwa`, configurato in `vite.config.js`): attivo solo nella build di produzione (non in `npm run dev`). I video/GIF esercizio (Supabase Storage e gli eventuali link Google Drive/Photos rimasti) si cachano cache-first per 60 giorni — la prima volta che un esercizio si vede scarica, le volte dopo è istantaneo, anche offline. Si aggiorna da solo a ogni deploy (`registerType: "autoUpdate"`), niente versioni vecchie dell'app bloccate in cache.
-- La voce usa la sintesi del browser (Web Speech API): su iOS parte solo dopo un tap dell'utente — il tap su "Inizia" nell'anteprima è il gesto che la sblocca (il Player parte direttamente, niente schermata "Sta per iniziare" di mezzo).
+- **Voce annunci**: generata con [ElevenLabs](https://elevenlabs.io) (`api/tts.js`), voce unica fissa per tutti (`ELEVENLABS_VOICE_ID`, non scelta dall'utente). Cache-first lato server nel bucket Storage `tts-cache`: ogni frase esatta si genera una sola volta (hash del testo+voce+modello come nome file), le volte dopo si riserve il file già pronto — nessuna nuova chiamata a ElevenLabs, nessuna attesa. Se ElevenLabs non risponde (rete, quota finita), `useSpeech` in `src/player/WorkoutPlayer.jsx` ripiega in automatico sulla sintesi del browser (Web Speech API) — l'allenamento non resta mai muto. Su iOS la voce parte solo dopo un tap dell'utente — il tap su "Inizia" nell'anteprima è il gesto che la sblocca (il Player parte direttamente, niente schermata "Sta per iniziare" di mezzo).
 - **Background durante l'allenamento**: una web app non può continuare a eseguire/parlare mentre il telefono è bloccato o un'altra app è in primo piano (limite di sistema operativo, non aggirabile). Mitigazioni nel Player (`src/player/WorkoutPlayer.jsx`): (1) **Wake Lock API** tiene lo schermo acceso finché l'allenamento è a schermo intero, così non va in background da solo per lo spegnimento automatico — si rilascia e viene richiesto di nuovo automaticamente ai cambi di visibilità, fallisce in silenzio dove non supportato; (2) il countdown misura il **tempo reale trascorso** tra un tick e l'altro (non assume sempre 1 secondo), così se l'utente cambia comunque app un attimo il countdown si allinea da solo al ritorno; (3) il punto in cui si è arrivati (esercizio + secondi rimasti) si salva in `localStorage` a ogni tick — se il telefono scarica e ricarica la pagina mentre l'app è in background (il caso più comune di "torna sempre a zero"), al rientro si **riprende da lì** invece che dall'inizio (in pausa, per dare tempo di riorientarsi); scade dopo 6 ore.
 - Ogni atleta ha 3 assegnazioni indipendenti (`profiles.assigned_warmup_program_id`+`warmup_position`, `assigned_strength_program_id`+`strength_position`, `assigned_circuit_program_id`+`circuit_position`) — niente rami/percorsi alternativi dentro una sezione, ma le 3 sezioni non si influenzano a vicenda. Le sessioni si generano al volo dalla libreria assegnata, non sono righe salvate: eliminare/modificare un Programma assegnato cambia cosa vede l'atleta la prossima volta.
 - Le percentuali/i massimali non richiedono mai un inserimento manuale di kg da parte dell'atleta; l'appuntamento di vendita resta fuori dall'app.

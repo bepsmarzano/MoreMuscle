@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Play, Pause, SkipForward, SkipBack, ChevronLeft, Clock, X, RotateCcw, Volume2, VolumeX, Check, Home } from "lucide-react";
 import { S, ExGif } from "../shared/ui.jsx";
+import * as api from "../lib/api.js";
 
 // ---------------------------------------------------------------------------
 // Modulo "esegui un allenamento": Preview (griglia esercizi) + Player
@@ -99,27 +100,45 @@ function clearProgress() {
   try { localStorage.removeItem(RESUME_KEY); } catch { /* niente da pulire */ }
 }
 
-// Sintesi vocale del browser (Web Speech API). Un contatore "generazione"
-// invalida qualunque utterance precedente ancora in corso quando arriva un
-// nuovo annuncio: quando cancel() interrompe un'utterance con onend
-// agganciato, molti browser sparano comunque "end" per quella interrotta, e
-// senza questo controllo l'annuncio vecchio continua a parlare
-// sovrapponendosi/ripetendo quello nuovo.
+// Voce ElevenLabs (via api/tts.js, con cache lato server — vedi lì), con
+// fallback alla sintesi del browser (Web Speech API) se ElevenLabs non è
+// raggiungibile/configurata: l'allenamento non deve mai restare muto per un
+// problema di rete o di quota. Un contatore "generazione" invalida qualunque
+// annuncio precedente ancora in corso (fetch in volo o utterance) quando ne
+// arriva uno nuovo — senza, un fetch lento potrebbe risolversi tardi e far
+// partire un annuncio vecchio sopra a quello nuovo.
 function useSpeech(enabled) {
   const genRef = useRef(0);
+  const audioRef = useRef(null); // <audio> riusato per ogni annuncio ElevenLabs
 
-  return useCallback((text) => {
-    if (!enabled || !text || typeof window === "undefined" || !window.speechSynthesis) return;
-    const myGen = ++genRef.current;
+  const speakBrowser = useCallback((text, myGen) => {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
     setTimeout(() => {
-      if (myGen !== genRef.current) return; // superata da un annuncio più recente
+      if (myGen !== genRef.current) return;
       const u = new SpeechSynthesisUtterance(text);
       u.lang = "it-IT";
       u.rate = 0.95;
       window.speechSynthesis.speak(u);
     }, 30);
-  }, [enabled]);
+  }, []);
+
+  return useCallback((text) => {
+    if (!enabled || !text || typeof window === "undefined") return;
+    const myGen = ++genRef.current;
+
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
+
+    api.getSpokenAudioUrl(text).then((url) => {
+      if (myGen !== genRef.current) return; // superato da un annuncio più recente
+      if (!audioRef.current) audioRef.current = new Audio();
+      audioRef.current.src = url;
+      audioRef.current.play().catch(() => { if (myGen === genRef.current) speakBrowser(text, myGen); });
+    }).catch(() => {
+      if (myGen === genRef.current) speakBrowser(text, myGen); // ElevenLabs non disponibile: rete di sicurezza
+    });
+  }, [enabled, speakBrowser]);
 }
 
 // ---- PREVIEW ---------------------------------------------------------------
