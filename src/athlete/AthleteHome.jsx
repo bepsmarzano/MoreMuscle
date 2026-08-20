@@ -113,6 +113,8 @@ export default function AthleteHome() {
     api.logExerciseSet({ athleteId: profile.id, exerciseName, reps, loadLabel }).catch((e) => setError(e.message));
   };
 
+  const handleGetLastLoadLabels = (exerciseNames) => api.getLastLoadLabels(profile.id, exerciseNames);
+
   const handleFinish = async (sectionDef) => {
     try {
       await sectionDef.complete();
@@ -216,7 +218,7 @@ export default function AthleteHome() {
     const workout = sessions[openSection];
 
     if (view === "play" && workout && !workout.done) {
-      return <Player workout={workout} onExit={() => setView("preview")} onHome={closeSection} onLog={handleLog} onFinish={() => handleFinish(def)} maxesByLiftKey={maxesByLiftKey} />;
+      return <Player workout={workout} onExit={() => setView("preview")} onHome={closeSection} onLog={handleLog} onGetLastLoadLabels={handleGetLastLoadLabels} onFinish={() => handleFinish(def)} maxesByLiftKey={maxesByLiftKey} />;
     }
 
     return (

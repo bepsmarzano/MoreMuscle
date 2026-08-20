@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Play, Pause, SkipForward, SkipBack, ChevronLeft, Clock, X, RotateCcw, Volume2, VolumeX, Check, Home } from "lucide-react";
-import { S, ExGif } from "../shared/ui.jsx";
+import { S, ExGif, LOAD_LEVELS } from "../shared/ui.jsx";
 import * as api from "../lib/api.js";
 
 // ---------------------------------------------------------------------------
@@ -13,6 +13,15 @@ import * as api from "../lib/api.js";
 // esercizio, serie di riscaldamento specifico + serie di lavoro a
 // percentuale del massimale, calcolata automaticamente).
 // ---------------------------------------------------------------------------
+
+// un blocco "vuoto" (es. il secondo blocco di una sessione Circuito creata
+// con un solo blocco davvero compilato — vedi CircuitPrograms.jsx) non deve
+// generare un riposo prima di sé: non c'è nulla per cui aspettare.
+function blockHasContent(block) {
+  if (!block) return false;
+  if (block.type === "strength") return (block.warmupSets?.length || 0) + (block.workSets?.length || 0) > 0;
+  return (block.exercises?.length || 0) > 0;
+}
 
 export function buildSequence(w, maxesByLiftKey = {}) {
   const steps = [];
@@ -45,7 +54,7 @@ export function buildSequence(w, maxesByLiftKey = {}) {
         block.exercises.forEach((ex) => steps.push({ type: "exercise", ex, blockIndex: bi, round: r + 1, totalRounds: rounds }));
       }
     }
-    if (bi < w.blocks.length - 1) steps.push({ type: "rest", duration: w.restBetweenBlocks, blockIndex: bi });
+    if (bi < w.blocks.length - 1 && blockHasContent(w.blocks[bi + 1])) steps.push({ type: "rest", duration: w.restBetweenBlocks, blockIndex: bi });
   });
   return steps;
 }
@@ -216,8 +225,24 @@ export function Preview({ workout, onStart, onBack }) {
 // onHome (opzionale): torna dritto al menu principale, non solo all'anteprima
 // di questa sezione — un'azione client-side pura, senza chiamate di rete,
 // sempre disponibile anche se il completamento della sessione dovesse fallire.
-export function Player({ workout, onExit, onHome, onLog, onFinish, maxesByLiftKey = {} }) {
+// onGetLastLoadLabels (opzionale, async, nomi esercizio -> {nome: ultimo peso
+// annotato}): riferimento mostrato nel riepilogo di fine blocco Circuito.
+export function Player({ workout, onExit, onHome, onLog, onGetLastLoadLabels, onFinish, maxesByLiftKey = {} }) {
   const sequence = useRef(buildSequence(workout, maxesByLiftKey)).current;
+  // ultimo step (non di riposo) di ogni blocco — serve per sapere, quando un
+  // round finisce, se è anche l'ultimo del blocco (quindi il momento giusto
+  // per il riepilogo pesi, se il blocco ha esercizi con attrezzo).
+  const lastStepOfBlock = useRef((() => {
+    const m = new Map();
+    sequence.forEach((s, i) => { if (s.type !== "rest") m.set(s.blockIndex, i); });
+    return m;
+  })()).current;
+  const blockEquippedExercises = useCallback((blockIndex) => {
+    const block = workout.blocks[blockIndex];
+    if (!block || block.type === "strength") return [];
+    return (block.exercises || []).filter((e) => e.equipment && e.equipment !== "bodyweight");
+  }, [workout.blocks]);
+
   // letto una volta sola al mount: se combacia con questo stesso allenamento
   // (e non è troppo vecchio) si riprende da lì invece che dall'inizio.
   const saved = useRef(loadSavedProgress(workout.id)).current;
@@ -229,9 +254,27 @@ export function Player({ workout, onExit, onHome, onLog, onFinish, maxesByLiftKe
   const [voiceOn, setVoiceOn] = useState(true);
   const [pendingLog, setPendingLog] = useState(saved?.pendingLog ?? null); // { kind: "reps", stepIndex } — solo per le serie Max/AMRAP
   const [repsInput, setRepsInput] = useState("");
+  // { blockIndex, items: [{name, prescribed, chosen}], lastLabels } — riepilogo
+  // "che peso hai usato" per gli esercizi con attrezzo di un blocco appena
+  // concluso. Non si riprende da localStorage se l'app va in background
+  // proprio in questo momento (caso raro): al rientro si ripresenta da solo,
+  // perché si ricalcola dallo stesso idx salvato, non serve persisterlo a parte.
+  const [blockSummary, setBlockSummary] = useState(null);
   const speak = useSpeech(voiceOn);
   const announced10 = useRef(false);
   const introSpoken = useRef(false);
+
+  const openBlockSummary = useCallback((blockIndex) => {
+    const equipped = blockEquippedExercises(blockIndex);
+    setBlockSummary({
+      blockIndex,
+      items: equipped.map((e) => ({ name: e.name, prescribed: e.loadLevel || null, chosen: e.loadLevel || "" })),
+      lastLabels: {},
+    });
+    onGetLastLoadLabels?.(equipped.map((e) => e.name)).then((labels) => {
+      setBlockSummary((bs) => (bs && bs.blockIndex === blockIndex ? { ...bs, lastLabels: labels || {} } : bs));
+    }).catch(() => {}); // solo un riferimento in più: se non arriva, il riepilogo resta comunque compilabile
+  }, [blockEquippedExercises, onGetLastLoadLabels]);
 
   const step = sequence[idx];
   const isRest = step?.type === "rest";
@@ -314,14 +357,41 @@ export function Player({ workout, onExit, onHome, onLog, onFinish, maxesByLiftKe
     announceStep(i);
   }, [sequence, announceStep]);
 
+  // avanza oltre lo step appena concluso — condiviso da resolveLog e
+  // resolveBlockSummary: se è anche l'ultimo step (non di riposo) del suo
+  // blocco, e quel blocco ha esercizi con attrezzo, si ferma prima sul
+  // riepilogo pesi invece di proseguire dritto al riposo/blocco successivo.
+  const advancePast = useCallback((finishedIdx) => {
+    const s = sequence[finishedIdx];
+    if (s.type !== "rest" && lastStepOfBlock.get(s.blockIndex) === finishedIdx && blockEquippedExercises(s.blockIndex).length) {
+      openBlockSummary(s.blockIndex);
+      return;
+    }
+    const next = finishedIdx + 1;
+    if (next < sequence.length) { goTo(next); setRunning(true); }
+    else { setRunning(false); speak("Allenamento completato. Ottimo lavoro."); }
+  }, [sequence, lastStepOfBlock, blockEquippedExercises, openBlockSummary, goTo, speak]);
+
   // chiamato dal form di annotazione (rep di una serie Max/AMRAP): salva,
-  // poi riprende dallo step successivo (o chiude l'allenamento se era l'ultimo)
+  // poi riprende dallo step successivo (o dal riepilogo pesi, o chiude
+  // l'allenamento se era l'ultimo)
   const resolveLog = (value) => {
     const s = sequence[pendingLog.stepIndex];
     onLog?.({ exerciseName: s.ex.name, reps: Number(value) || 0 });
+    const finishedIdx = pendingLog.stepIndex;
     setPendingLog(null);
     setRepsInput("");
-    const next = pendingLog.stepIndex + 1;
+    advancePast(finishedIdx);
+  };
+
+  // chiamato dal riepilogo di fine blocco: annota il peso scelto per ogni
+  // esercizio con attrezzo (solo quelli con una scelta fatta), poi riprende
+  const resolveBlockSummary = () => {
+    const bs = blockSummary;
+    bs.items.forEach((it) => { if (it.chosen) onLog?.({ exerciseName: it.name, loadLabel: it.chosen }); });
+    const finishedIdx = lastStepOfBlock.get(bs.blockIndex);
+    setBlockSummary(null);
+    const next = finishedIdx + 1;
     if (next < sequence.length) { goTo(next); setRunning(true); }
     else { setRunning(false); speak("Allenamento completato. Ottimo lavoro."); }
   };
@@ -357,6 +427,13 @@ export function Player({ workout, onExit, onHome, onLog, onFinish, maxesByLiftKe
             setRunning(false);
             return 0;
           }
+          // ultimo step (non di riposo) del suo blocco, e il blocco ha
+          // esercizi con attrezzo: riepilogo pesi prima di proseguire
+          if (current.type !== "rest" && lastStepOfBlock.get(current.blockIndex) === idx && blockEquippedExercises(current.blockIndex).length) {
+            openBlockSummary(current.blockIndex);
+            setRunning(false);
+            return 0;
+          }
           const next = idx + 1;
           if (next < sequence.length) {
             announced10.current = false; setIdx(next);
@@ -368,9 +445,9 @@ export function Player({ workout, onExit, onHome, onLog, onFinish, maxesByLiftKe
       });
     }, 1000);
     return () => clearInterval(t);
-  }, [running, idx, sequence, speak, announceStep]);
+  }, [running, idx, sequence, speak, announceStep, lastStepOfBlock, blockEquippedExercises, openBlockSummary]);
 
-  const finished = !running && !pendingLog && idx === sequence.length - 1 && remaining === 0;
+  const finished = !running && !pendingLog && !blockSummary && idx === sequence.length - 1 && remaining === 0;
 
   // notifica il chiamante una volta per ogni allenamento completato (es.
   // l'atleta: avanza alla sessione successiva del piano). Se rifà
@@ -478,9 +555,9 @@ export function Player({ workout, onExit, onHome, onLog, onFinish, maxesByLiftKe
             ))}
           </div>
           <div style={S.controls}>
-            <button style={S.ctrlBtn} onClick={() => goTo(idx - 1)} disabled={idx === 0 || !!pendingLog}><SkipBack size={22} /></button>
-            <button style={S.ctrlBtnMain} onClick={() => setRunning((r) => !r)} disabled={!!pendingLog}>{running ? <Pause size={30} /> : <Play size={30} />}</button>
-            <button style={S.ctrlBtn} onClick={() => goTo(idx + 1)} disabled={idx >= sequence.length - 1 || !!pendingLog}><SkipForward size={22} /></button>
+            <button style={S.ctrlBtn} onClick={() => goTo(idx - 1)} disabled={idx === 0 || !!pendingLog || !!blockSummary}><SkipBack size={22} /></button>
+            <button style={S.ctrlBtnMain} onClick={() => setRunning((r) => !r)} disabled={!!pendingLog || !!blockSummary}>{running ? <Pause size={30} /> : <Play size={30} />}</button>
+            <button style={S.ctrlBtn} onClick={() => goTo(idx + 1)} disabled={idx >= sequence.length - 1 || !!pendingLog || !!blockSummary}><SkipForward size={22} /></button>
           </div>
 
           <div style={S.playerFooter}>
@@ -499,6 +576,34 @@ export function Player({ workout, onExit, onHome, onLog, onFinish, maxesByLiftKe
             <input type="number" min={0} autoFocus style={S.fieldInput} value={repsInput}
               onChange={(e) => setRepsInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && resolveLog(repsInput)} />
             <button style={{ ...S.primaryBtn, width: "100%", justifyContent: "center", marginTop: 14 }} onClick={() => resolveLog(repsInput)}>
+              <Check size={16} /> Continua
+            </button>
+          </div>
+        </div>
+      )}
+
+      {blockSummary && (
+        <div style={S.modalWrap}>
+          <div style={S.modal} onClick={(e) => e.stopPropagation()}>
+            <div style={S.modalHead}>
+              <span style={S.modalTitle}>Che peso hai usato?</span>
+            </div>
+            <p style={{ ...S.muted, marginTop: -6, marginBottom: 14 }}>Blocco {blockSummary.blockIndex + 1} completato — un ricordo veloce per la prossima volta.</p>
+            {blockSummary.items.map((it, i) => {
+              const last = blockSummary.lastLabels[it.name];
+              return (
+                <div key={it.name} style={{ marginBottom: 14 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>{it.name}</div>
+                  {last && <div style={{ ...S.muted, fontSize: 12, marginBottom: 6 }}>La volta scorsa: {last}</div>}
+                  <select style={S.fieldInput} value={it.chosen}
+                    onChange={(e) => setBlockSummary((bs) => ({ ...bs, items: bs.items.map((x, xi) => (xi === i ? { ...x, chosen: e.target.value } : x)) }))}>
+                    <option value="">— non annotato —</option>
+                    {LOAD_LEVELS.map((lvl) => <option key={lvl} value={lvl}>{lvl}</option>)}
+                  </select>
+                </div>
+              );
+            })}
+            <button style={{ ...S.primaryBtn, width: "100%", justifyContent: "center", marginTop: 4 }} onClick={resolveBlockSummary}>
               <Check size={16} /> Continua
             </button>
           </div>
