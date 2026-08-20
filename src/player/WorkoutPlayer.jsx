@@ -179,39 +179,47 @@ export function Preview({ workout, onStart, onBack }) {
         </div>
       </div>
 
-      {workout.blocks.map((block, bi) => (
-        <div key={block.id} style={{ marginBottom: 24 }}>
-          <div style={S.previewBlockLabel}>
-            BLOCCO {bi + 1}{block.type !== "strength" && block.rounds > 1 ? ` · ${block.rounds} round` : ""}
-          </div>
-          {block.type === "strength" ? (
-            <div style={S.previewCard}>
-              <ExGif src={block.exerciseGif} alt={block.exerciseName} style={S.previewImg} />
-              <div style={S.previewInfo}>
-                <div style={S.previewName}>{block.exerciseName || "Senza nome"}</div>
-                <div style={S.previewMeta}>
-                  {(block.warmupSets || []).length} serie riscaldamento · {(block.workSets || []).length} serie di lavoro
-                </div>
-              </div>
+      {(() => {
+        // blocchi senza contenuto (es. il secondo blocco "vuoto" di un
+        // circuito creato con un solo blocco davvero compilato — vedi
+        // CircuitPrograms.jsx) non compaiono affatto in anteprima, né generano
+        // un riposo dopo di sé: stessa logica di buildSequence, qui applicata
+        // prima di sapere quali indici restano "ultimo" tra quelli veri.
+        const real = workout.blocks.map((block, bi) => ({ block, bi })).filter(({ block }) => blockHasContent(block));
+        return real.map(({ block, bi }, ri) => (
+          <div key={block.id} style={{ marginBottom: 24 }}>
+            <div style={S.previewBlockLabel}>
+              BLOCCO {bi + 1}{block.type !== "strength" && block.rounds > 1 ? ` · ${block.rounds} round` : ""}
             </div>
-          ) : (
-            <div style={S.previewGrid}>
-              {block.exercises.map((ex) => (
-                <div key={ex.id} style={S.previewCard}>
-                  <ExGif src={ex.gif} alt={ex.name} style={S.previewImg} />
-                  <div style={S.previewInfo}>
-                    <div style={S.previewName}>{ex.name}</div>
-                    <div style={S.previewMeta}>
-                      {ex.reps === 0 ? "Max" : ex.reps > 1 ? `${ex.reps} rep` : "hold"} · {ex.time}s{ex.loadLevel ? ` · ${ex.loadLevel}` : ""}
-                    </div>
+            {block.type === "strength" ? (
+              <div style={S.previewCard}>
+                <ExGif src={block.exerciseGif} alt={block.exerciseName} style={S.previewImg} />
+                <div style={S.previewInfo}>
+                  <div style={S.previewName}>{block.exerciseName || "Senza nome"}</div>
+                  <div style={S.previewMeta}>
+                    {(block.warmupSets || []).length} serie riscaldamento · {(block.workSets || []).length} serie di lavoro
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-          {bi < workout.blocks.length - 1 && <div style={S.restPill}><Clock size={14} /> Riposo {workout.restBetweenBlocks}s</div>}
-        </div>
-      ))}
+              </div>
+            ) : (
+              <div style={S.previewGrid}>
+                {block.exercises.map((ex) => (
+                  <div key={ex.id} style={S.previewCard}>
+                    <ExGif src={ex.gif} alt={ex.name} style={S.previewImg} />
+                    <div style={S.previewInfo}>
+                      <div style={S.previewName}>{ex.name}</div>
+                      <div style={S.previewMeta}>
+                        {ex.reps === 0 ? "Max" : ex.reps > 1 ? `${ex.reps} rep` : "hold"} · {ex.time}s{ex.loadLevel ? ` · ${ex.loadLevel}` : ""}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {ri < real.length - 1 && <div style={S.restPill}><Clock size={14} /> Riposo {workout.restBetweenBlocks}s</div>}
+          </div>
+        ));
+      })()}
     </div>
   );
 }
