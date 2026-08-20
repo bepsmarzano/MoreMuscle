@@ -195,34 +195,37 @@ export async function getMyAssignedLifts(profile) {
 // ---- log annotati dall'atleta durante l'allenamento -------------------------------
 // reps: ripetizioni fatte in una serie AMRAP della Forza.
 // loadLabel: livello di carico usato in un esercizio a manubri/kettlebell del Circuito.
-export async function logExerciseSet({ athleteId, exerciseName, reps, loadLabel }) {
+// weightKg: chili esatti opzionali, accanto al livello (es. "Pesante" + 24).
+export async function logExerciseSet({ athleteId, exerciseName, reps, loadLabel, weightKg }) {
   const { error } = await supabase.from("exercise_logs").insert({
     athlete_id: athleteId,
     exercise_name: exerciseName,
     reps: reps ?? null,
     load_label: loadLabel ?? null,
+    weight_kg: weightKg ?? null,
   });
   if (error) throw error;
 }
 
-// ultimo "peso usato" (load_label) annotato dall'atleta per ciascuno di
-// questi esercizi (match per nome esatto — il nome esercizio incorpora già
-// lato/attrezzo, es. "Kettlebell Swing" vs "Dumbbell Rows Destra", quindi
-// basta da solo a garantire "stesso esercizio e stesso tipo di peso").
-// Usato nel riepilogo di fine blocco del Player per mostrare un riferimento
-// ("la volta scorsa: Pesante") prima che l'atleta scelga il peso di oggi.
+// ultimo "peso usato" (load_label + weight_kg) annotato dall'atleta per
+// ciascuno di questi esercizi (match per nome esatto — il nome esercizio
+// incorpora già lato/attrezzo, es. "Kettlebell Swing" vs "Dumbbell Rows
+// Destra", quindi basta da solo a garantire "stesso esercizio e stesso tipo
+// di peso"). Usato nel riepilogo di fine blocco del Player per mostrare un
+// riferimento ("la volta scorsa: Pesante, 24kg") prima che l'atleta scelga il
+// peso di oggi.
 export async function getLastLoadLabels(athleteId, exerciseNames) {
   if (!athleteId || !exerciseNames?.length) return {};
   const { data, error } = await supabase
     .from("exercise_logs")
-    .select("exercise_name, load_label, logged_at")
+    .select("exercise_name, load_label, weight_kg, logged_at")
     .eq("athlete_id", athleteId)
     .in("exercise_name", exerciseNames)
     .not("load_label", "is", null)
     .order("logged_at", { ascending: false });
   if (error) throw error;
   const map = {};
-  for (const row of data) if (!(row.exercise_name in map)) map[row.exercise_name] = row.load_label; // il primo per nome è il più recente, già ordinato desc
+  for (const row of data) if (!(row.exercise_name in map)) map[row.exercise_name] = { loadLabel: row.load_label, weightKg: row.weight_kg }; // il primo per nome è il più recente, già ordinato desc
   return map;
 }
 

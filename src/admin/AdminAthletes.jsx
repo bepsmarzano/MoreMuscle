@@ -315,7 +315,7 @@ function AthleteDetail({ athleteId }) {
           <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
             {logs.map((l) => (
               <div key={l.id} style={{ fontSize: 12.5, color: "#ccc" }}>
-                {new Date(l.logged_at).toLocaleDateString("it-IT")} · {l.exercise_name} — {l.reps != null ? `${l.reps} rep` : l.load_label}
+                {new Date(l.logged_at).toLocaleDateString("it-IT")} · {l.exercise_name} — {l.reps != null ? `${l.reps} rep` : [l.load_label, l.weight_kg != null ? `${l.weight_kg}kg` : null].filter(Boolean).join(", ")}
               </div>
             ))}
           </div>

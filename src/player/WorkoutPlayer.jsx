@@ -262,11 +262,12 @@ export function Player({ workout, onExit, onHome, onLog, onGetLastLoadLabels, on
   const [voiceOn, setVoiceOn] = useState(true);
   const [pendingLog, setPendingLog] = useState(saved?.pendingLog ?? null); // { kind: "reps", stepIndex } — solo per le serie Max/AMRAP
   const [repsInput, setRepsInput] = useState("");
-  // { blockIndex, items: [{name, prescribed, chosen}], lastLabels } — riepilogo
-  // "che peso hai usato" per gli esercizi con attrezzo di un blocco appena
-  // concluso. Non si riprende da localStorage se l'app va in background
-  // proprio in questo momento (caso raro): al rientro si ripresenta da solo,
-  // perché si ricalcola dallo stesso idx salvato, non serve persisterlo a parte.
+  // { blockIndex, items: [{name, prescribed, chosenLabel, chosenKg}], lastLabels }
+  // — riepilogo "che peso hai usato" per gli esercizi con attrezzo di un
+  // blocco appena concluso. Non si riprende da localStorage se l'app va in
+  // background proprio in questo momento (caso raro): al rientro si
+  // ripresenta da solo, perché si ricalcola dallo stesso idx salvato, non
+  // serve persisterlo a parte.
   const [blockSummary, setBlockSummary] = useState(null);
   const speak = useSpeech(voiceOn);
   const announced10 = useRef(false);
@@ -276,7 +277,7 @@ export function Player({ workout, onExit, onHome, onLog, onGetLastLoadLabels, on
     const equipped = blockEquippedExercises(blockIndex);
     setBlockSummary({
       blockIndex,
-      items: equipped.map((e) => ({ name: e.name, prescribed: e.loadLevel || null, chosen: e.loadLevel || "" })),
+      items: equipped.map((e) => ({ name: e.name, prescribed: e.loadLevel || null, chosenLabel: e.loadLevel || "", chosenKg: "" })),
       lastLabels: {},
     });
     onGetLastLoadLabels?.(equipped.map((e) => e.name)).then((labels) => {
@@ -392,11 +393,15 @@ export function Player({ workout, onExit, onHome, onLog, onGetLastLoadLabels, on
     advancePast(finishedIdx);
   };
 
-  // chiamato dal riepilogo di fine blocco: annota il peso scelto per ogni
-  // esercizio con attrezzo (solo quelli con una scelta fatta), poi riprende
+  // chiamato dal riepilogo di fine blocco: annota il peso scelto (livello +
+  // chili esatti, se scritti) per ogni esercizio con attrezzo — solo quelli
+  // con almeno una scelta fatta — poi riprende
   const resolveBlockSummary = () => {
     const bs = blockSummary;
-    bs.items.forEach((it) => { if (it.chosen) onLog?.({ exerciseName: it.name, loadLabel: it.chosen }); });
+    bs.items.forEach((it) => {
+      const kg = it.chosenKg !== "" ? Number(it.chosenKg) : null;
+      if (it.chosenLabel || kg != null) onLog?.({ exerciseName: it.name, loadLabel: it.chosenLabel || null, weightKg: kg });
+    });
     const finishedIdx = lastStepOfBlock.get(bs.blockIndex);
     setBlockSummary(null);
     const next = finishedIdx + 1;
@@ -599,15 +604,21 @@ export function Player({ workout, onExit, onHome, onLog, onGetLastLoadLabels, on
             <p style={{ ...S.muted, marginTop: -6, marginBottom: 14 }}>Blocco {blockSummary.blockIndex + 1} completato — un ricordo veloce per la prossima volta.</p>
             {blockSummary.items.map((it, i) => {
               const last = blockSummary.lastLabels[it.name];
+              const lastText = last && [last.loadLabel, last.weightKg != null ? `${last.weightKg}kg` : null].filter(Boolean).join(", ");
+              const patchItem = (patch) => setBlockSummary((bs) => ({ ...bs, items: bs.items.map((x, xi) => (xi === i ? { ...x, ...patch } : x)) }));
               return (
                 <div key={it.name} style={{ marginBottom: 14 }}>
                   <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>{it.name}</div>
-                  {last && <div style={{ ...S.muted, fontSize: 12, marginBottom: 6 }}>La volta scorsa: {last}</div>}
-                  <select style={S.fieldInput} value={it.chosen}
-                    onChange={(e) => setBlockSummary((bs) => ({ ...bs, items: bs.items.map((x, xi) => (xi === i ? { ...x, chosen: e.target.value } : x)) }))}>
-                    <option value="">— non annotato —</option>
-                    {LOAD_LEVELS.map((lvl) => <option key={lvl} value={lvl}>{lvl}</option>)}
-                  </select>
+                  {lastText && <div style={{ ...S.muted, fontSize: 12, marginBottom: 6 }}>La volta scorsa: {lastText}</div>}
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <select style={{ ...S.fieldInput, flex: 1 }} value={it.chosenLabel}
+                      onChange={(e) => patchItem({ chosenLabel: e.target.value })}>
+                      <option value="">— livello —</option>
+                      {LOAD_LEVELS.map((lvl) => <option key={lvl} value={lvl}>{lvl}</option>)}
+                    </select>
+                    <input type="number" min={0} step="0.5" placeholder="kg" style={{ ...S.fieldInput, width: 80 }}
+                      value={it.chosenKg} onChange={(e) => patchItem({ chosenKg: e.target.value })} />
+                  </div>
                 </div>
               );
             })}

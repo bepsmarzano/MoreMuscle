@@ -82,6 +82,7 @@ supabase/
   migration_gif_size_limit.sql      idem, dopo la precedente — limite dimensione bucket GIF
   migration_athlete_profile.sql     idem, dopo la precedente — profilo atleta self-service (nome + massimali)
   migration_tts_cache.sql           idem, dopo la precedente — bucket Storage per la cache voce ElevenLabs
+  migration_weight_kg.sql           idem, dopo la precedente — chili esatti opzionali sul peso annotato dall'atleta
 scripts/
   migrate-gifs-to-storage.mjs   migrazione una tantum: sposta le GIF da Google Drive a Supabase Storage
   migrate-gifs-to-video.mjs     migrazione una tantum: converte le GIF in video MP4 (molto più leggeri)

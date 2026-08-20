@@ -109,8 +109,8 @@ export default function AthleteHome() {
   const openPreview = (key) => { setOpenSection(key); setView("preview"); };
   const closeSection = () => { setOpenSection(null); setView("preview"); };
 
-  const handleLog = ({ exerciseName, reps, loadLabel }) => {
-    api.logExerciseSet({ athleteId: profile.id, exerciseName, reps, loadLabel }).catch((e) => setError(e.message));
+  const handleLog = ({ exerciseName, reps, loadLabel, weightKg }) => {
+    api.logExerciseSet({ athleteId: profile.id, exerciseName, reps, loadLabel, weightKg }).catch((e) => setError(e.message));
   };
 
   const handleGetLastLoadLabels = (exerciseNames) => api.getLastLoadLabels(profile.id, exerciseNames);
