@@ -295,7 +295,7 @@ export default function AthleteHome() {
                         <button style={S.ghostBtn} onClick={() => discardCandidate(def, w)} disabled={discardingId === w.id}>
                           {discardingId === w.id ? "…" : <><SkipForward size={14} /> Scarta</>}
                         </button>
-                        <button style={S.primaryBtn} onClick={() => chooseCandidate(w)}>Fai questo</button>
+                        <button style={S.primaryBtn} onClick={() => chooseCandidate(w)}>Visualizza</button>
                       </div>
                     </div>
                   ))}
