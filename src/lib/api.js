@@ -130,13 +130,15 @@ export async function assignWarmupProgram(athleteId, programId) {
   if (error) throw error;
 }
 
-export async function assignStrengthProgram(athleteId, programId) {
-  const { error } = await supabase.rpc("admin_assign_strength_program", { p_athlete_id: athleteId, p_program_id: programId });
+// startSession: 1-indicizzata come mostrato in UI ("Sessione N") — utile per
+// migrare un atleta che arriva a metà ciclo da un altro progetto.
+export async function assignStrengthProgram(athleteId, programId, startSession = 1) {
+  const { error } = await supabase.rpc("admin_assign_strength_program", { p_athlete_id: athleteId, p_program_id: programId, p_start_session: startSession });
   if (error) throw error;
 }
 
-export async function assignCircuitProgram(athleteId, programId) {
-  const { error } = await supabase.rpc("admin_assign_circuit_program", { p_athlete_id: athleteId, p_program_id: programId });
+export async function assignCircuitProgram(athleteId, programId, startSession = 1) {
+  const { error } = await supabase.rpc("admin_assign_circuit_program", { p_athlete_id: athleteId, p_program_id: programId, p_start_session: startSession });
   if (error) throw error;
 }
 
@@ -353,45 +355,58 @@ export async function completeWarmup() {
   if (error) throw error;
 }
 
-export async function getNextStrengthSession(profile) {
+// fino a 3 sessioni tra cui l'atleta sceglie (le prime strength_batch_size
+// della sua coda personale) — non un'unica "prossima" fissa. Ogni candidata
+// porta con sé queueIndex: l'indice sessione da passare a
+// resolveStrengthSession quando viene fatta o scartata. null = non
+// assegnato, {done:true} = coda esaurita (programma completato).
+export async function getStrengthChoices(profile) {
   if (!profile?.assigned_strength_program_id) return null;
   const { data, error } = await supabase.from("strength_programs").select("*").eq("id", profile.assigned_strength_program_id).maybeSingle();
   if (error) throw error;
   if (!data) return null;
   const sessions = data.sessions || [];
-  const i = profile.strength_position || 0;
-  if (sessions.length === 0 || i >= sessions.length) return { done: true, total: sessions.length };
-  return {
+  const queue = profile.strength_queue || [];
+  const batchSize = profile.strength_batch_size || 0;
+  if (sessions.length === 0 || batchSize === 0) return { done: true, total: sessions.length };
+  return queue.slice(0, batchSize).map((i) => ({
     id: `strength-${data.id}-${i}`,
+    queueIndex: i,
     name: `${data.name} — Sessione ${i + 1}/${sessions.length}`,
     restBetweenBlocks: 0,
     blocks: [{ id: "f", type: "strength", ...sessions[i] }],
-  };
+  }));
 }
 
-export async function completeStrengthSession() {
-  const { error } = await supabase.rpc("complete_strength_session");
+// discard=false: fatta per sempre. discard=true: rimandata in fondo alla
+// coda (torna disponibile più avanti, non sparisce).
+export async function resolveStrengthSession(queueIndex, discard) {
+  const { error } = await supabase.rpc("resolve_strength_session", { p_index: queueIndex, p_discard: discard });
   if (error) throw error;
 }
 
-export async function getNextCircuitSession(profile) {
+export async function getCircuitChoices(profile) {
   if (!profile?.assigned_circuit_program_id) return null;
   const { data, error } = await supabase.from("circuit_programs").select("*").eq("id", profile.assigned_circuit_program_id).maybeSingle();
   if (error) throw error;
   if (!data) return null;
   const sessions = data.sessions || [];
-  const i = profile.circuit_position || 0;
-  if (sessions.length === 0 || i >= sessions.length) return { done: true, total: sessions.length };
-  const blocks = circuitSessionToBlocks(sessions[i]).map((b, bj) => ({ id: `c${bj}`, type: "standard", ...b }));
-  return {
-    id: `circuit-${data.id}-${i}`,
-    name: `${data.name} — Sessione ${i + 1}/${sessions.length}`,
-    restBetweenBlocks: 120, // riposo a cronometro tra i 2 blocchi del circuito
-    blocks,
-  };
+  const queue = profile.circuit_queue || [];
+  const batchSize = profile.circuit_batch_size || 0;
+  if (sessions.length === 0 || batchSize === 0) return { done: true, total: sessions.length };
+  return queue.slice(0, batchSize).map((i) => {
+    const blocks = circuitSessionToBlocks(sessions[i]).map((b, bj) => ({ id: `c${bj}`, type: "standard", ...b }));
+    return {
+      id: `circuit-${data.id}-${i}`,
+      queueIndex: i,
+      name: `${data.name} — Sessione ${i + 1}/${sessions.length}`,
+      restBetweenBlocks: 120, // riposo a cronometro tra i 2 blocchi del circuito
+      blocks,
+    };
+  });
 }
 
-export async function completeCircuitSession() {
-  const { error } = await supabase.rpc("complete_circuit_session");
+export async function resolveCircuitSession(queueIndex, discard) {
+  const { error } = await supabase.rpc("resolve_circuit_session", { p_index: queueIndex, p_discard: discard });
   if (error) throw error;
 }

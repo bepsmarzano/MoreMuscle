@@ -57,11 +57,13 @@ export default function AdminAthletes() {
     }
   };
 
-  const handleAssignStrength = async (athleteId, programId) => {
+  // startSession: 1-indicizzata ("Sessione N") — di default 1, diverso solo
+  // per migrare un atleta a metà ciclo da un altro progetto.
+  const handleAssignStrength = async (athleteId, programId, startSession = 1) => {
     setBusyId(athleteId);
     try {
-      await api.assignStrengthProgram(athleteId, programId || null);
-      setAthletes((prev) => prev.map((a) => (a.id === athleteId ? { ...a, assigned_strength_program_id: programId || null, strength_position: 0 } : a)));
+      await api.assignStrengthProgram(athleteId, programId || null, startSession);
+      setAthletes((prev) => prev.map((a) => (a.id === athleteId ? { ...a, assigned_strength_program_id: programId || null, strength_position: Math.max(0, startSession - 1) } : a)));
     } catch (e) {
       setError(e.message || "Assegnazione non riuscita.");
     } finally {
@@ -69,11 +71,11 @@ export default function AdminAthletes() {
     }
   };
 
-  const handleAssignCircuit = async (athleteId, programId) => {
+  const handleAssignCircuit = async (athleteId, programId, startSession = 1) => {
     setBusyId(athleteId);
     try {
-      await api.assignCircuitProgram(athleteId, programId || null);
-      setAthletes((prev) => prev.map((a) => (a.id === athleteId ? { ...a, assigned_circuit_program_id: programId || null, circuit_position: 0 } : a)));
+      await api.assignCircuitProgram(athleteId, programId || null, startSession);
+      setAthletes((prev) => prev.map((a) => (a.id === athleteId ? { ...a, assigned_circuit_program_id: programId || null, circuit_position: Math.max(0, startSession - 1) } : a)));
     } catch (e) {
       setError(e.message || "Assegnazione non riuscita.");
     } finally {
@@ -178,8 +180,8 @@ export default function AdminAthletes() {
                       circuitPrograms={circuitPrograms}
                       busy={busyId === a.id}
                       onAssignWarmup={(id) => handleAssignWarmup(a.id, id)}
-                      onAssignStrength={(id) => handleAssignStrength(a.id, id)}
-                      onAssignCircuit={(id) => handleAssignCircuit(a.id, id)}
+                      onAssignStrength={(id, start) => handleAssignStrength(a.id, id, start)}
+                      onAssignCircuit={(id, start) => handleAssignCircuit(a.id, id, start)}
                     />
                   )}
                   {activePanel === "detail" && <AthleteDetail athleteId={a.id} />}
@@ -211,11 +213,22 @@ export default function AdminAthletes() {
   );
 }
 
-// assegnazione indipendente delle 3 sezioni: stesso pattern per tutte —
-// un solo programma scelto da un menu a tendina (il Riscaldamento ruota
-// all'infinito sulle proprie sessioni una volta assegnato, Forza/Circuito
-// avanzano e si fermano all'ultima).
+// assegnazione indipendente delle 3 sezioni: un programma scelto da un menu
+// a tendina (il Riscaldamento ruota all'infinito sulle proprie sessioni una
+// volta assegnato). Forza/Circuito propongono invece fino a 3 sessioni tra
+// cui l'atleta sceglie, in coda — "Sessione di partenza" imposta da dove
+// parte quella coda (di default la prima, utile diverso solo per migrare un
+// atleta a metà ciclo da un altro progetto).
 function AssignSection({ athlete, warmupPrograms, strengthPrograms, circuitPrograms, busy, onAssignWarmup, onAssignStrength, onAssignCircuit }) {
+  // "sessione di partenza": di default 1 (assegnazione normale). Cambiarla
+  // serve solo a migrare un atleta a metà ciclo da un altro progetto — il
+  // pulsante "Applica" riassegna lo stesso programma dalla sessione scelta,
+  // utile anche per correggere la posizione di un atleta già assegnato senza
+  // dover cambiare programma (un cambio di programma da solo non lo fa
+  // scattare, dato che il <select> non genera onChange se il valore non cambia).
+  const [strengthStart, setStrengthStart] = useState(1);
+  const [circuitStart, setCircuitStart] = useState(1);
+
   return (
     <div style={{ background: "#0f0f0f", border: "1px solid #222", borderRadius: 10, padding: 14, marginTop: 10 }}>
       <div style={S.blockLabel}>PROGRAMMA RISCALDAMENTO</div>
@@ -226,18 +239,36 @@ function AssignSection({ athlete, warmupPrograms, strengthPrograms, circuitProgr
       </select>
 
       <div style={S.blockLabel}>PROGRAMMA FORZA</div>
-      <select style={{ ...S.fieldSelect, marginBottom: 14 }} value={athlete.assigned_strength_program_id || ""} disabled={busy}
-        onChange={(e) => onAssignStrength(e.target.value)}>
+      <select style={{ ...S.fieldSelect, marginBottom: 6 }} value={athlete.assigned_strength_program_id || ""} disabled={busy}
+        onChange={(e) => onAssignStrength(e.target.value, strengthStart)}>
         <option value="">— nessuno —</option>
         {strengthPrograms.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.sessions.length} sessioni)</option>)}
       </select>
+      {athlete.assigned_strength_program_id && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14 }}>
+          <label style={S.miniLbl}>Sessione di partenza
+            <input type="number" min={1} style={S.numInputSm} value={strengthStart} disabled={busy}
+              onChange={(e) => setStrengthStart(Math.max(1, +e.target.value || 1))} />
+          </label>
+          <button style={S.ghostBtn} disabled={busy} onClick={() => onAssignStrength(athlete.assigned_strength_program_id, strengthStart)}>Applica</button>
+        </div>
+      )}
 
       <div style={S.blockLabel}>PROGRAMMA CIRCUITO</div>
-      <select style={S.fieldSelect} value={athlete.assigned_circuit_program_id || ""} disabled={busy}
-        onChange={(e) => onAssignCircuit(e.target.value)}>
+      <select style={{ ...S.fieldSelect, marginBottom: 6 }} value={athlete.assigned_circuit_program_id || ""} disabled={busy}
+        onChange={(e) => onAssignCircuit(e.target.value, circuitStart)}>
         <option value="">— nessuno —</option>
         {circuitPrograms.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.sessions.length} sessioni)</option>)}
       </select>
+      {athlete.assigned_circuit_program_id && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <label style={S.miniLbl}>Sessione di partenza
+            <input type="number" min={1} style={S.numInputSm} value={circuitStart} disabled={busy}
+              onChange={(e) => setCircuitStart(Math.max(1, +e.target.value || 1))} />
+          </label>
+          <button style={S.ghostBtn} disabled={busy} onClick={() => onAssignCircuit(athlete.assigned_circuit_program_id, circuitStart)}>Applica</button>
+        </div>
+      )}
     </div>
   );
 }

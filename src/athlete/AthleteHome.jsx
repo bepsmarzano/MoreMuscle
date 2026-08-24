@@ -7,19 +7,24 @@ import Profile from "./Profile.jsx";
 import { useAuth } from "../auth/AuthProvider.jsx";
 import * as api from "../lib/api.js";
 
-// le 3 sezioni sono indipendenti: ognuna la propria "prossima sessione",
-// il proprio modo di segnarla completata, e solo il Circuito è saltabile.
+// le 3 sezioni sono indipendenti. Riscaldamento: un'unica "prossima
+// sessione" che ruota all'infinito (invariato). Forza/Circuito: fino a 3
+// sessioni tra cui scegliere (choice: true) — sessions[key] è un array di
+// candidate invece di un singolo workout, vedi getStrengthChoices/
+// getCircuitChoices in api.js.
 const SECTIONS = [
-  { key: "warmup", label: "Riscaldamento", icon: Flame, getNext: api.getNextWarmup, complete: api.completeWarmup, canSkip: false },
-  { key: "strength", label: "Forza", icon: Dumbbell, getNext: api.getNextStrengthSession, complete: api.completeStrengthSession, canSkip: false },
-  { key: "circuit", label: "Circuito", icon: Repeat, getNext: api.getNextCircuitSession, complete: api.completeCircuitSession, canSkip: true },
+  { key: "warmup", label: "Riscaldamento", icon: Flame, choice: false, getNext: api.getNextWarmup, complete: api.completeWarmup },
+  { key: "strength", label: "Forza", icon: Dumbbell, choice: true, getNext: api.getStrengthChoices, resolve: api.resolveStrengthSession },
+  { key: "circuit", label: "Circuito", icon: Repeat, choice: true, getNext: api.getCircuitChoices, resolve: api.resolveCircuitSession },
 ];
 
 // ---------------------------------------------------------------------------
 // Home atleta: questionario non compilato -> Questionnaire; altrimenti un
-// menu con le 3 sezioni (Riscaldamento/Forza/Circuito), ciascuna con la
-// propria "prossima sessione" — si avanzano indipendentemente, saltare una
-// sezione oggi significa semplicemente ritrovarla identica la volta dopo.
+// menu con le 3 sezioni, indipendenti tra loro. Riscaldamento: un'unica
+// "prossima sessione" che ruota all'infinito. Forza/Circuito: fino a 3
+// sessioni tra cui scegliere — farne una la completa per sempre, scartarla
+// la rimanda in fondo alla coda (vedi resolveStrengthSession/
+// resolveCircuitSession in api.js).
 // ---------------------------------------------------------------------------
 export default function AthleteHome() {
   const { profile, signOut, refreshProfile } = useAuth();
@@ -34,7 +39,9 @@ export default function AthleteHome() {
   const [sessions, setSessions] = useState({});
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [openSection, setOpenSection] = useState(null); // "warmup" | "strength" | "circuit" | null
-  const [view, setView] = useState("preview"); // preview | play (della sezione aperta)
+  const [view, setView] = useState("preview"); // choose | preview | play (della sezione aperta)
+  const [chosenWorkout, setChosenWorkout] = useState(null); // Forza/Circuito: quale delle candidate scelte
+  const [discardingId, setDiscardingId] = useState(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -65,9 +72,7 @@ export default function AthleteHome() {
   const loadSessions = async () => {
     setLoadingSessions(true);
     try {
-      const [warmup, strength, circuit] = await Promise.all([
-        api.getNextWarmup(profile), api.getNextStrengthSession(profile), api.getNextCircuitSession(profile),
-      ]);
+      const [warmup, strength, circuit] = await Promise.all(SECTIONS.map((def) => def.getNext(profile)));
       setSessions({ warmup, strength, circuit });
       // pre-scarica le GIF dei prossimi allenamenti delle 3 sezioni appena si
       // sa quali sono, non quando l'atleta le apre — così quando entra in un
@@ -77,7 +82,10 @@ export default function AthleteHome() {
       // di esecuzione degli esercizi — le prime in assoluto ad alta priorità
       // (competono meno con altro traffico), il resto a bassa priorità: non
       // deve mai rallentare la GIF che l'atleta sta guardando in quel momento.
-      const orderedGifUrls = [...collectGifUrls(warmup), ...collectGifUrls(strength), ...collectGifUrls(circuit)];
+      // Forza/Circuito ora sono array di candidate (fino a 3), non un singolo
+      // workout: si appiattiscono allo stesso modo.
+      const asList = (x) => (Array.isArray(x) ? x : [x]);
+      const orderedGifUrls = [warmup, strength, circuit].flatMap((s) => asList(s).flatMap((w) => collectGifUrls(w)));
       prefetchGifs(orderedGifUrls.slice(0, 4), "high");
       prefetchGifs(orderedGifUrls.slice(4), "low");
       setError("");
@@ -106,8 +114,28 @@ export default function AthleteHome() {
   };
   useEffect(() => { loadMaxes(); }, [profile]);
 
-  const openPreview = (key) => { setOpenSection(key); setView("preview"); };
-  const closeSection = () => { setOpenSection(null); setView("preview"); };
+  const openPreview = (key) => {
+    const def = SECTIONS.find((s) => s.key === key);
+    setOpenSection(key);
+    setChosenWorkout(null);
+    setView(def.choice ? "choose" : "preview");
+  };
+  const closeSection = () => { setOpenSection(null); setChosenWorkout(null); setView("preview"); };
+
+  // Forza/Circuito: scegliere una delle candidate apre la sua Anteprima;
+  // scartarla la risolve subito (torna in fondo alla coda) senza giocarla.
+  const chooseCandidate = (w) => { setChosenWorkout(w); setView("preview"); };
+  const discardCandidate = async (sectionDef, w) => {
+    setDiscardingId(w.id);
+    try {
+      await sectionDef.resolve(w.queueIndex, true);
+      await refreshProfile();
+    } catch (e) {
+      setError(e.message || "Operazione non riuscita.");
+    } finally {
+      setDiscardingId(null);
+    }
+  };
 
   const handleLog = ({ exerciseName, reps, loadLabel, weightKg }) => {
     api.logExerciseSet({ athleteId: profile.id, exerciseName, reps, loadLabel, weightKg }).catch((e) => setError(e.message));
@@ -115,9 +143,10 @@ export default function AthleteHome() {
 
   const handleGetLastLoadLabels = (exerciseNames) => api.getLastLoadLabels(profile.id, exerciseNames);
 
-  const handleFinish = async (sectionDef) => {
+  const handleFinish = async (sectionDef, workout) => {
     try {
-      await sectionDef.complete();
+      if (sectionDef.choice) await sectionDef.resolve(workout.queueIndex, false);
+      else await sectionDef.complete();
       await refreshProfile();
       closeSection();
     } catch (e) {
@@ -212,13 +241,70 @@ export default function AthleteHome() {
     );
   }
 
-  // una sezione è aperta: la sua Preview, poi il Player, a schermo intero
+  // una sezione è aperta. Riscaldamento: Anteprima poi Player, come sempre.
+  // Forza/Circuito: prima la scelta tra le candidate, poi Anteprima di quella
+  // scelta, poi Player.
   if (openSection) {
     const def = SECTIONS.find((s) => s.key === openSection);
-    const workout = sessions[openSection];
+    const raw = sessions[openSection];
+    const workout = def.choice ? chosenWorkout : raw;
 
     if (view === "play" && workout && !workout.done) {
-      return <Player workout={workout} onExit={() => setView("preview")} onHome={closeSection} onLog={handleLog} onGetLastLoadLabels={handleGetLastLoadLabels} onFinish={() => handleFinish(def)} maxesByLiftKey={maxesByLiftKey} />;
+      return (
+        <Player workout={workout} onExit={() => setView(def.choice ? "choose" : "preview")} onHome={closeSection}
+          onLog={handleLog} onGetLastLoadLabels={handleGetLastLoadLabels} onFinish={() => handleFinish(def, workout)} maxesByLiftKey={maxesByLiftKey} />
+      );
+    }
+
+    if (def.choice && view === "choose") {
+      const choices = Array.isArray(raw) ? raw : [];
+      return (
+        <div style={S.app}>
+          <style>{globalCss}</style>
+          {header}
+          <main style={S.main}>
+            {error && <p style={S.authError}>{error}</p>}
+            {raw?.done ? (
+              <div style={S.waitCard}>
+                <div style={S.startTitle}>Programma completato 🎉</div>
+                <p style={S.startMeta}>Hai finito tutte le sessioni di questo programma.</p>
+                <button style={S.ghostBtn} onClick={closeSection}><ChevronLeft size={14} /> Torna al menu</button>
+              </div>
+            ) : choices.length === 0 ? (
+              <div style={S.waitCard}>
+                <div style={S.startTitle}>Nessun {def.label.toLowerCase()} assegnato</div>
+                <p style={S.startMeta}>Il tuo allenatore non te l'ha ancora assegnato.</p>
+                <button style={S.ghostBtn} onClick={closeSection}><ChevronLeft size={14} /> Torna al menu</button>
+              </div>
+            ) : (
+              <>
+                <div style={S.sectionRow}>
+                  <div>
+                    <h2 style={S.h2}>Scegli quale {def.label.toLowerCase()} fare</h2>
+                    <p style={S.muted}>Finché non le risolvi tutte (fatte o scartate) restano queste — scartarne una la rimanda in fondo, non la perdi.</p>
+                  </div>
+                  <button style={S.ghostBtn} onClick={closeSection}><ChevronLeft size={14} /> Indietro</button>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {choices.map((w) => (
+                    <div key={w.id} style={S.card}>
+                      <div style={{ flex: 1 }}>
+                        <div style={S.cardTitle}>{w.name}</div>
+                      </div>
+                      <div style={{ ...S.cardActions, gap: 8 }}>
+                        <button style={S.ghostBtn} onClick={() => discardCandidate(def, w)} disabled={discardingId === w.id}>
+                          {discardingId === w.id ? "…" : <><SkipForward size={14} /> Scarta</>}
+                        </button>
+                        <button style={S.primaryBtn} onClick={() => chooseCandidate(w)}>Fai questo</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </main>
+        </div>
+      );
     }
 
     return (
@@ -228,16 +314,7 @@ export default function AthleteHome() {
         <main style={S.main}>
           {error && <p style={S.authError}>{error}</p>}
           {workout && !workout.done ? (
-            <>
-              <Preview workout={workout} onStart={() => setView("play")} onBack={closeSection} />
-              {def.canSkip && (
-                <div style={{ marginTop: 16, textAlign: "center" }}>
-                  <button style={S.ghostBtn} onClick={closeSection}>
-                    <SkipForward size={14} /> Salta per oggi — te lo riproponiamo la prossima volta
-                  </button>
-                </div>
-              )}
-            </>
+            <Preview workout={workout} onStart={() => setView("play")} onBack={def.choice ? () => setView("choose") : closeSection} />
           ) : (
             <div style={S.waitCard}>
               <div style={S.startTitle}>{workout?.done ? "Programma completato 🎉" : `Nessun ${def.label.toLowerCase()} assegnato`}</div>
@@ -269,7 +346,15 @@ export default function AthleteHome() {
             <div style={S.cardGrid}>
               {SECTIONS.map((def) => {
                 const w = sessions[def.key];
-                const statusText = !w ? "Non assegnato" : w.done ? "Programma completato" : w.name;
+                const choices = def.choice && Array.isArray(w) ? w : null;
+                const statusText = !w
+                  ? "Non assegnato"
+                  : w.done
+                  ? "Programma completato"
+                  : choices
+                  ? `${choices.length} session${choices.length === 1 ? "e" : "i"} tra cui scegliere`
+                  : w.name;
+                const canGo = w && !w.done && (!choices || choices.length > 0);
                 return (
                   <div key={def.key} style={S.card}>
                     <div style={{ flex: 1 }}>
@@ -277,7 +362,7 @@ export default function AthleteHome() {
                       <div style={S.cardMeta}><span>{statusText}</span></div>
                     </div>
                     <div style={S.cardActions}>
-                      {w && !w.done && <button style={S.primaryBtn} onClick={() => openPreview(def.key)}>Vai</button>}
+                      {canGo && <button style={S.primaryBtn} onClick={() => openPreview(def.key)}>Vai</button>}
                     </div>
                   </div>
                 );
