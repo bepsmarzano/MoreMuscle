@@ -68,13 +68,19 @@ export function collectGifUrls(w) {
   return buildSequence(w).map((s) => s.ex?.gif).filter(Boolean);
 }
 
-// "0 rep" = Max (standard o Forza, stessa convenzione: vedi blockEditors.jsx):
-// l'atleta fa il massimo di ripetizioni possibili nel tempo dato, ma non gli
-// si chiede più a posteriori quante ne ha fatte — richiesta tolta
-// definitivamente (era percepita come un'interruzione non voluta su ogni
-// singolo esercizio Max, non solo sui pochi dove aveva senso). Il carico da
-// usare non si chiede nemmeno quello: lo prescrive l'admin in fase di
-// creazione (ex.loadLevel) e l'atleta lo vede insieme a nome/rep.
+// "0 rep" = Max (standard o Forza, stessa convenzione: vedi blockEditors.jsx).
+// Solo per la Forza le rep effettive contano come dato di allenamento (serve
+// per seguire la progressione nel tempo) e si chiedono ancora a posteriori;
+// nei Circuiti/Riscaldamento un Max (es. Mountain Climber, Burpees, Plank)
+// non si annota più — era un'interruzione non voluta su ogni esercizio Max,
+// non solo sui pochi dove aveva senso davvero. Il carico da usare non si
+// chiede mai: lo prescrive l'admin in fase di creazione (ex.loadLevel) e
+// l'atleta lo vede insieme a nome/rep.
+function needsLog(step) {
+  if (!step || step.type !== "strength") return null;
+  if (step.ex && step.ex.reps === 0) return { kind: "reps" };
+  return null;
+}
 
 // Progresso salvato sul dispositivo (localStorage): non possiamo far
 // continuare l'esecuzione mentre il telefono è bloccato o un'altra app è in
@@ -97,9 +103,9 @@ function loadSavedProgress(workoutId) {
   }
 }
 
-function saveProgress(workoutId, idx, remaining) {
+function saveProgress(workoutId, idx, remaining, pendingLog) {
   try {
-    localStorage.setItem(RESUME_KEY, JSON.stringify({ workoutId, idx, remaining, savedAt: Date.now() }));
+    localStorage.setItem(RESUME_KEY, JSON.stringify({ workoutId, idx, remaining, pendingLog, savedAt: Date.now() }));
   } catch { /* storage pieno/non disponibile: pazienza, si riparte da capo se serve */ }
 }
 
@@ -290,6 +296,8 @@ export function Player({ workout, onExit, onHome, onLog, onGetLastLoadLabels, on
   // invece di ritrovarsi il countdown già in corsa appena riapre l'app.
   const [running, setRunning] = useState(!saved);
   const [voiceOn, setVoiceOn] = useState(true);
+  const [pendingLog, setPendingLog] = useState(saved?.pendingLog ?? null); // { kind: "reps", stepIndex } — solo serie Max/AMRAP di Forza
+  const [repsInput, setRepsInput] = useState("");
   // { blockIndex, items: [{name, prescribed, chosenLabel, chosenKg}], lastLabels }
   // — riepilogo "che peso hai usato" per gli esercizi con attrezzo di un
   // blocco appena concluso. Non si riprende da localStorage se l'app va in
@@ -359,8 +367,8 @@ export function Player({ workout, onExit, onHome, onLog, onGetLastLoadLabels, on
   // pagina mentre l'app è in background, al ritorno si riprende da qui
   // invece che dall'inizio.
   useEffect(() => {
-    saveProgress(workout.id, idx, remaining);
-  }, [workout.id, idx, remaining]);
+    saveProgress(workout.id, idx, remaining, pendingLog);
+  }, [workout.id, idx, remaining, pendingLog]);
 
   // schermo sempre acceso finché l'allenamento è a schermo intero — la causa
   // più comune di "l'allenamento si interrompe in background" è lo spegnimento
@@ -393,6 +401,33 @@ export function Player({ workout, onExit, onHome, onLog, onGetLastLoadLabels, on
     setRemaining(s.type === "rest" ? 0 : s.ex.time);
     announceStep(i);
   }, [sequence, announceStep]);
+
+  // avanza oltre lo step appena concluso — condiviso da resolveLog e
+  // resolveBlockSummary: se è anche l'ultimo step (non di riposo) del suo
+  // blocco, e quel blocco ha esercizi con attrezzo, si ferma prima sul
+  // riepilogo pesi invece di proseguire dritto al riposo/blocco successivo.
+  const advancePast = useCallback((finishedIdx) => {
+    const s = sequence[finishedIdx];
+    if (s.type !== "rest" && lastStepOfBlock.get(s.blockIndex) === finishedIdx && blockEquippedExercises(s.blockIndex).length) {
+      openBlockSummary(s.blockIndex);
+      return;
+    }
+    const next = finishedIdx + 1;
+    if (next < sequence.length) { goTo(next); setRunning(true); }
+    else { setRunning(false); speak("Allenamento completato. Ottimo lavoro."); }
+  }, [sequence, lastStepOfBlock, blockEquippedExercises, openBlockSummary, goTo, speak]);
+
+  // chiamato dal form di annotazione (rep di una serie Max/AMRAP di Forza):
+  // salva, poi riprende dallo step successivo (o dal riepilogo pesi, o
+  // chiude l'allenamento se era l'ultimo)
+  const resolveLog = (value) => {
+    const s = sequence[pendingLog.stepIndex];
+    onLog?.({ exerciseName: s.ex.name, reps: Number(value) || 0 });
+    const finishedIdx = pendingLog.stepIndex;
+    setPendingLog(null);
+    setRepsInput("");
+    advancePast(finishedIdx);
+  };
 
   // chiamato dal riepilogo di fine blocco: annota il peso scelto (livello +
   // chili esatti, se scritti) per ogni esercizio con attrezzo — solo quelli
@@ -439,6 +474,12 @@ export function Player({ workout, onExit, onHome, onLog, onGetLastLoadLabels, on
         // la voce, utile per organizzare il cambio di attrezzi.
         if (workout.kind === "circuit" && r >= 1 && r <= 3) beep();
         if (r <= 1) {
+          const log = needsLog(current);
+          if (log) {
+            setPendingLog({ ...log, stepIndex: idx });
+            setRunning(false);
+            return 0;
+          }
           // ultimo step (non di riposo) del suo blocco, e il blocco ha
           // esercizi con attrezzo: riepilogo pesi prima di proseguire
           if (current.type !== "rest" && lastStepOfBlock.get(current.blockIndex) === idx && blockEquippedExercises(current.blockIndex).length) {
@@ -459,7 +500,7 @@ export function Player({ workout, onExit, onHome, onLog, onGetLastLoadLabels, on
     return () => clearInterval(t);
   }, [running, idx, sequence, speak, announceStep, lastStepOfBlock, blockEquippedExercises, openBlockSummary]);
 
-  const finished = !running && !blockSummary && idx === sequence.length - 1 && remaining === 0;
+  const finished = !running && !pendingLog && !blockSummary && idx === sequence.length - 1 && remaining === 0;
 
   // notifica il chiamante una volta per ogni allenamento completato (es.
   // l'atleta: avanza alla sessione successiva del piano). Se rifà
@@ -586,9 +627,9 @@ export function Player({ workout, onExit, onHome, onLog, onGetLastLoadLabels, on
             ))}
           </div>
           <div style={S.controls}>
-            <button style={S.ctrlBtn} onClick={() => goTo(idx - 1)} disabled={idx === 0 || !!blockSummary}><SkipBack size={22} /></button>
-            <button style={S.ctrlBtnMain} onClick={() => setRunning((r) => !r)} disabled={!!blockSummary}>{running ? <Pause size={30} /> : <Play size={30} />}</button>
-            <button style={S.ctrlBtn} onClick={() => goTo(idx + 1)} disabled={idx >= sequence.length - 1 || !!blockSummary}><SkipForward size={22} /></button>
+            <button style={S.ctrlBtn} onClick={() => goTo(idx - 1)} disabled={idx === 0 || !!pendingLog || !!blockSummary}><SkipBack size={22} /></button>
+            <button style={S.ctrlBtnMain} onClick={() => setRunning((r) => !r)} disabled={!!pendingLog || !!blockSummary}>{running ? <Pause size={30} /> : <Play size={30} />}</button>
+            <button style={S.ctrlBtn} onClick={() => goTo(idx + 1)} disabled={idx >= sequence.length - 1 || !!pendingLog || !!blockSummary}><SkipForward size={22} /></button>
           </div>
 
           <div style={S.playerFooter}>
@@ -598,6 +639,20 @@ export function Player({ workout, onExit, onHome, onLog, onGetLastLoadLabels, on
         </div>
       </div>
 
+      {pendingLog && (
+        <div style={S.modalWrap}>
+          <div style={S.modal} onClick={(e) => e.stopPropagation()}>
+            <div style={S.modalHead}>
+              <span style={S.modalTitle}>Quante ripetizioni hai fatto?</span>
+            </div>
+            <input type="number" min={0} autoFocus style={S.fieldInput} value={repsInput}
+              onChange={(e) => setRepsInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && resolveLog(repsInput)} />
+            <button style={{ ...S.primaryBtn, width: "100%", justifyContent: "center", marginTop: 14 }} onClick={() => resolveLog(repsInput)}>
+              <Check size={16} /> Continua
+            </button>
+          </div>
+        </div>
+      )}
 
       {blockSummary && (
         <div style={S.modalWrap}>
