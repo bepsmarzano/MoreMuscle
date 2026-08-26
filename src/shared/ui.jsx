@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 
 // ---------------------------------------------------------------------------
 // Pezzi condivisi da tutta l'app: stile visuale, placeholder GIF, id locali.
@@ -32,27 +32,49 @@ const isVideoSrc = (src) => typeof src === "string" && /\.mp4(\?|$)/i.test(src);
 // (convertito dalle GIF originali: stesso aspetto, 30-50 volte più leggero,
 // vedi scripts/migrate-gifs-to-video.mjs), ma capisce anche una vera GIF
 // residua (link non ancora convertito, o incollato a mano dall'admin).
+// Entrambi i formati ritentano automaticamente (con cache-busting) fino a 2
+// volte prima di arrendersi al placeholder — falliscono a volte in modo
+// transitorio, specie quando se ne carica tanti insieme; per il video conta
+// anche di più (quasi tutta la libreria lo è ormai) — un retry mancante qui
+// aveva già causato placeholder ingiustificati su un semplice blip di rete.
 // Video: parte/si ripete da solo come faceva la GIF, silenzioso.
 // GIF: caricamento lazy + niente referrer (i link Google Drive/Photos a
-// volte rifiutano la richiesta in base al referrer) + un retry automatico
-// prima di arrendersi al placeholder — falliscono a volte in modo
-// transitorio, specie quando se ne carica tante insieme.
+// volte rifiutano la richiesta in base al referrer).
 // fetchPriority: "high" per quella davvero a schermo ora (es. il video del
 // Player) — così non aspetta mai dietro a quelle pre-caricate in background
 // per i prossimi esercizi (vedi prefetchGifs più sotto).
 export function ExGif({ src, alt, style, onClick, fetchPriority }) {
   const retries = useRef(0);
   const [videoFailed, setVideoFailed] = useState(false);
+  const [videoSrc, setVideoSrc] = useState(src); // cache-busted sui retry, senza toccare la prop
+
+  // src cambia a ogni esercizio (lo stesso <ExGif> resta montato, non si
+  // rifà da capo da solo) — senza questo reset, un fallimento sull'esercizio
+  // precedente resterebbe "appiccicato" a quello nuovo.
+  useEffect(() => {
+    retries.current = 0;
+    setVideoFailed(false);
+    setVideoSrc(src);
+  }, [src]);
 
   if (isVideoSrc(src) && !videoFailed) {
+    const handleVideoError = () => {
+      if (retries.current < 2) {
+        retries.current += 1;
+        const busted = src + (src.includes("?") ? "&" : "?") + "_r=" + retries.current;
+        setTimeout(() => setVideoSrc(busted), 500 * retries.current);
+      } else {
+        setVideoFailed(true);
+      }
+    };
     return (
-      <video src={src} style={style} onClick={onClick}
+      <video src={videoSrc} style={style} onClick={onClick}
         autoPlay loop muted playsInline preload="auto"
-        onError={() => setVideoFailed(true)} fetchPriority={fetchPriority || "auto"} />
+        onError={handleVideoError} fetchPriority={fetchPriority || "auto"} />
     );
   }
 
-  const handleError = (e) => {
+  const handleImgError = (e) => {
     const img = e.currentTarget;
     if (src && retries.current < 2) {
       retries.current += 1;
@@ -65,7 +87,7 @@ export function ExGif({ src, alt, style, onClick, fetchPriority }) {
   };
   return (
     <img src={(videoFailed ? null : src) || PLACEHOLDER_GIF} alt={alt} style={style} onClick={onClick}
-      loading="lazy" referrerPolicy="no-referrer" onError={handleError} fetchPriority={fetchPriority || "auto"} />
+      loading="lazy" referrerPolicy="no-referrer" onError={handleImgError} fetchPriority={fetchPriority || "auto"} />
   );
 }
 
