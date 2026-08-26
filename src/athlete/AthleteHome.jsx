@@ -137,6 +137,22 @@ export default function AthleteHome() {
     }
   };
 
+  // il riscaldamento proposto è scelto a caso tra quelli assegnati (non più
+  // numerato in ordine): l'atleta può chiederne subito un altro, sempre a
+  // caso, senza che questo conti come fatto.
+  const [rerollingWarmup, setRerollingWarmup] = useState(false);
+  const handleRerollWarmup = async () => {
+    setRerollingWarmup(true);
+    try {
+      await api.rerollWarmup();
+      await refreshProfile();
+    } catch (e) {
+      setError(e.message || "Operazione non riuscita.");
+    } finally {
+      setRerollingWarmup(false);
+    }
+  };
+
   const handleLog = ({ exerciseName, reps, loadLabel, weightKg }) => {
     api.logExerciseSet({ athleteId: profile.id, exerciseName, reps, loadLabel, weightKg }).catch((e) => setError(e.message));
   };
@@ -314,7 +330,16 @@ export default function AthleteHome() {
         <main style={S.main}>
           {error && <p style={S.authError}>{error}</p>}
           {workout && !workout.done ? (
-            <Preview workout={workout} onStart={() => setView("play")} onBack={def.choice ? () => setView("choose") : closeSection} />
+            <>
+              <Preview workout={workout} onStart={() => setView("play")} onBack={def.choice ? () => setView("choose") : closeSection} />
+              {openSection === "warmup" && (
+                <div style={{ marginTop: 16, textAlign: "center" }}>
+                  <button style={S.ghostBtn} onClick={handleRerollWarmup} disabled={rerollingWarmup}>
+                    <Repeat size={14} /> {rerollingWarmup ? "Cambio…" : "Cambia riscaldamento"}
+                  </button>
+                </div>
+              )}
+            </>
           ) : (
             <div style={S.waitCard}>
               <div style={S.startTitle}>{workout?.done ? "Programma completato 🎉" : `Nessun ${def.label.toLowerCase()} assegnato`}</div>

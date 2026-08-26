@@ -356,6 +356,14 @@ export async function completeWarmup() {
   if (error) throw error;
 }
 
+// l'atleta non vuole il riscaldamento proposto: ne pesca subito un altro a
+// caso tra quelli assegnati (mai lo stesso appena visto), senza che questo
+// conti come fatto.
+export async function rerollWarmup() {
+  const { error } = await supabase.rpc("reroll_warmup");
+  if (error) throw error;
+}
+
 // fino a 3 sessioni tra cui l'atleta sceglie (le prime strength_batch_size
 // della sua coda personale) — non un'unica "prossima" fissa. Ogni candidata
 // porta con sé queueIndex: l'indice sessione da passare a
