@@ -159,8 +159,39 @@ function useSpeech(enabled) {
 // se scartato subito) nel click su "Inizia" sblocca la riproduzione audio
 // per il resto della sessione, prima che serva davvero.
 const SILENT_AUDIO = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
+
+// bip di conto alla rovescia (solo Circuito, 3 secondi prima del cambio
+// esercizio — vedi il tick del Player) — generato al volo con la Web Audio
+// API, niente file audio da caricare. Un solo AudioContext riusato per tutti
+// i bip; creato/sbloccato nello stesso gesto di "Inizia" (stessa ragione del
+// SILENT_AUDIO sopra: creato più tardi rischierebbe di restare sospeso).
+let beepCtx = null;
+function ensureBeepContext() {
+  if (!beepCtx) {
+    try { beepCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch { return null; }
+  }
+  if (beepCtx.state === "suspended") beepCtx.resume().catch(() => {});
+  return beepCtx;
+}
+function beep() {
+  const ctx = ensureBeepContext();
+  if (!ctx) return;
+  try {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.13);
+  } catch { /* un bip mancato non blocca l'allenamento */ }
+}
+
 function unlockAudioPlayback() {
   try { new Audio(SILENT_AUDIO).play().catch(() => {}); } catch { /* niente da fare, si tenterà comunque più tardi */ }
+  ensureBeepContext();
 }
 
 // ---- PREVIEW ---------------------------------------------------------------
@@ -433,6 +464,10 @@ export function Player({ workout, onExit, onHome, onLog, onGetLastLoadLabels, on
         if (r === 11 && !announced10.current && idx + 1 < sequence.length) {
           announced10.current = true; speak("Mancano 10 secondi.");
         }
+        // 3 bip negli ultimi 3 secondi prima del cambio esercizio, solo nei
+        // Circuiti — un modo rapido di sentire "si cambia" senza aspettare
+        // la voce, utile per organizzare il cambio di attrezzi.
+        if (workout.kind === "circuit" && r >= 1 && r <= 3) beep();
         if (r <= 1) {
           const log = needsLog(current);
           if (log) {
@@ -559,6 +594,25 @@ export function Player({ workout, onExit, onHome, onLog, onGetLastLoadLabels, on
               </div>
             )}
           </div>
+
+          {/* durante il riposo, un'anteprima del blocco che sta per iniziare
+              — così l'atleta organizza il cambio di attrezzi mentre aspetta,
+              invece di scoprirlo esercizio per esercizio */}
+          {isRest && (() => {
+            const nextBlock = workout.blocks[step.blockIndex + 1];
+            if (!nextBlock || nextBlock.type === "strength" || !(nextBlock.exercises || []).length) return null;
+            return (
+              <div style={S.restPreviewRow}>
+                {nextBlock.exercises.map((ex) => (
+                  <div key={ex.id} style={S.restPreviewItem}>
+                    <ExGif src={ex.gif} alt={ex.name} style={S.restPreviewImg} />
+                    <div style={S.restPreviewName}>{ex.name}</div>
+                    {ex.loadLevel && <div style={S.restPreviewLoad}>{ex.loadLevel}</div>}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </div>
 
         <div style={S.stageBottomBar}>

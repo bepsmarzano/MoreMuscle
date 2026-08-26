@@ -344,6 +344,7 @@ export async function getNextWarmup(profile) {
   const i = (profile.warmup_position || 0) % sessions.length;
   return {
     id: `warmup-${data.id}-${i}`,
+    kind: "warmup",
     name: sessions.length > 1 ? `${data.name} — Sessione ${i + 1}/${sessions.length}` : data.name,
     restBetweenBlocks: 0, // un solo blocco: nessun riposo tra blocchi da mostrare
     blocks: [{ id: "w", type: "standard", exercises: sessions[i].exercises || [], rounds: sessions[i].rounds || 1 }],
@@ -371,6 +372,7 @@ export async function getStrengthChoices(profile) {
   if (sessions.length === 0 || batchSize === 0) return { done: true, total: sessions.length };
   return queue.slice(0, batchSize).map((i) => ({
     id: `strength-${data.id}-${i}`,
+    kind: "strength",
     queueIndex: i,
     name: `${data.name} — Sessione ${i + 1}/${sessions.length}`,
     restBetweenBlocks: 0,
@@ -398,6 +400,7 @@ export async function getCircuitChoices(profile) {
     const blocks = circuitSessionToBlocks(sessions[i]).map((b, bj) => ({ id: `c${bj}`, type: "standard", ...b }));
     return {
       id: `circuit-${data.id}-${i}`,
+      kind: "circuit",
       queueIndex: i,
       name: `${data.name} — Sessione ${i + 1}/${sessions.length}`,
       restBetweenBlocks: 120, // riposo a cronometro tra i 2 blocchi del circuito

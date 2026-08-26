@@ -201,6 +201,11 @@ export const S = {
   exStageReps: { fontSize: 16, color: "#C1FF72", fontWeight: 700, textShadow: "0 2px 10px rgba(0,0,0,.85)" },
   restBig: { fontSize: "clamp(28px, 8vw, 42px)", fontWeight: 900, letterSpacing: 3, color: "#7fb0ff", textShadow: "0 2px 16px rgba(0,0,0,.85)" },
   restSub: { color: "#cdddf5", fontSize: 15, textShadow: "0 2px 10px rgba(0,0,0,.85)" },
+  restPreviewRow: { display: "flex", gap: 10, overflowX: "auto", marginTop: 12, paddingBottom: 2, maxWidth: "100%" },
+  restPreviewItem: { flex: "0 0 auto", width: 84, textAlign: "center" },
+  restPreviewImg: { width: 84, height: 84, borderRadius: 12, objectFit: "cover", background: "rgba(0,0,0,.4)", display: "block", boxShadow: "0 4px 16px rgba(0,0,0,.5)" },
+  restPreviewName: { fontSize: 11, color: "#e8eefc", marginTop: 5, lineHeight: 1.25, textShadow: "0 1px 6px rgba(0,0,0,.9)" },
+  restPreviewLoad: { fontSize: 10, color: "#9fc4ff", marginTop: 1, textShadow: "0 1px 6px rgba(0,0,0,.9)" },
 
   timerBackdrop: { width: 84, height: 84, borderRadius: "50%", background: "rgba(0,0,0,.45)", backdropFilter: "blur(6px)", display: "grid", placeItems: "center", boxShadow: "0 8px 30px rgba(0,0,0,.5)", flexShrink: 0 },
 
