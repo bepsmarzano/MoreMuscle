@@ -11,6 +11,14 @@ export default defineConfig({
       // non serve che il plugin lo generi anche lui.
       manifest: false,
       registerType: "autoUpdate", // niente versioni vecchie dell'app bloccate in cache dopo un deploy
+      // registrazione a mano (src/main.jsx) invece di quella iniettata di
+      // default: quella di default registra il SW una volta al primo
+      // caricamento e basta, senza mai ricontrollare — su iOS, riaprire
+      // l'app dalla Home spesso riprende il processo sospeso invece di
+      // ricaricare davvero la pagina, quindi quel controllo non scatta mai
+      // da solo e l'app resta bloccata su una versione vecchia. Serve un
+      // ricontrollo esplicito quando l'app torna visibile + periodico.
+      injectRegister: false,
       workbox: {
         // oltre ai file dell'app (JS/CSS/HTML, precache di default): le GIF
         // esercizio, cache-first e a lungo termine — la prima volta che si
