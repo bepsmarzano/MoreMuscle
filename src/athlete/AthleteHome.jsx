@@ -183,6 +183,32 @@ export default function AthleteHome() {
     </header>
   );
 
+  // scadenza opzionale dell'accesso (clienti che acquistano un mese/una
+  // prova su un programma più lungo) — impostata dall'admin, vedi
+  // AdminAthletes.jsx. Precede tutto il resto (pagina iniziale, questionario,
+  // allenamenti): nessuna azione richiesta all'atleta finché non gli si
+  // sposta la data in avanti, si sblocca da solo appena succede.
+  if (profile.access_until && profile.access_until < new Date().toISOString().slice(0, 10)) {
+    const waNumber = (settings?.whatsapp_number || "").replace(/[^\d]/g, "");
+    return (
+      <div style={S.app}>
+        <style>{globalCss}</style>
+        {header}
+        <main style={S.main}>
+          <div style={S.waitCard}>
+            <div style={S.startTitle}>Accesso scaduto</div>
+            <p style={S.startMeta}>Il tuo accesso è scaduto il {new Date(profile.access_until).toLocaleDateString("it-IT")}. Contatta il tuo allenatore per rinnovarlo.</p>
+            {waNumber && (
+              <a style={S.whatsappBtn} href={`https://wa.me/${waNumber}`} target="_blank" rel="noopener noreferrer">
+                <MessageCircle size={18} /> Contattami
+              </a>
+            )}
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   if (showLanding) {
     const waNumber = (settings?.whatsapp_number || "").replace(/[^\d]/g, "");
     return (

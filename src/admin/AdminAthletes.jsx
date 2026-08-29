@@ -3,6 +3,10 @@ import { UserPlus, RefreshCw, X, Check, Plus, ChevronDown, ChevronUp, Trash2 } f
 import { S } from "../shared/ui.jsx";
 import * as api from "../lib/api.js";
 
+// data di oggi come stringa YYYY-MM-DD: confrontabile direttamente con
+// access_until (stesso formato) senza passare da oggetti Date/fusi orari.
+const todayStr = () => new Date().toISOString().slice(0, 10);
+
 // ---------------------------------------------------------------------------
 // Pannello "Atleti": lista atleti invitati con riepilogo questionario,
 // assegnazione INDIPENDENTE di Riscaldamento (rotazione)/Forza/Circuito per
@@ -83,6 +87,20 @@ export default function AdminAthletes() {
     }
   };
 
+  // scadenza accesso (clienti che acquistano un mese/una prova su un
+  // programma più lungo) — date === "" toglie la scadenza (accesso illimitato).
+  const handleSetAccessUntil = async (athleteId, date) => {
+    setBusyId(athleteId);
+    try {
+      await api.setAthleteAccessUntil(athleteId, date || null);
+      setAthletes((prev) => prev.map((a) => (a.id === athleteId ? { ...a, access_until: date || null } : a)));
+    } catch (e) {
+      setError(e.message || "Operazione non riuscita.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   // elimina l'account: utile anche per "reinvitare" chi non ha mai completato
   // l'accesso — Supabase non permette di invitare due volte la stessa email
   // finché l'utente esiste, quindi elimina e reinvita da zero è la via.
@@ -135,6 +153,11 @@ export default function AdminAthletes() {
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {a.access_until && (
+                    <span style={{ ...S.badge, ...(a.access_until < todayStr() ? S.badgeExpired : S.badgeAssigned) }}>
+                      {a.access_until < todayStr() ? "Scaduto" : "Fino al"} {new Date(a.access_until).toLocaleDateString("it-IT")}
+                    </span>
+                  )}
                   <span style={{ ...S.badge, ...(warmupProgram ? S.badgeAssigned : S.badgeWaiting) }}>
                     {/* rotazione infinita: la posizione gira in modulo, quindi la mostriamo già ridotta alla sessione corrente */}
                     Risc. {warmupProgram && warmupProgram.sessions.length ? `${((a.warmup_position || 0) % warmupProgram.sessions.length) + 1}/${warmupProgram.sessions.length}` : "—"}
@@ -150,6 +173,7 @@ export default function AdminAthletes() {
 
               {isOpen && (
                 <>
+                  <AccessExpiry athlete={a} onSave={(date) => handleSetAccessUntil(a.id, date)} />
                   {q ? (
                     <div style={S.qGrid}>
                       <div><div style={S.qLabel}>Obiettivo</div><div style={S.qValue}>{q.goal || "—"}</div></div>
@@ -209,6 +233,26 @@ export default function AdminAthletes() {
       </div>
 
       {inviting && <InviteModal onClose={() => setInviting(false)} onInvited={load} />}
+    </div>
+  );
+}
+
+// scadenza opzionale dell'accesso — per i clienti che acquistano un mese o
+// un periodo di prova su un programma che dura più mesi. Nessuna data =
+// accesso illimitato (comportamento di sempre). Solo un blocco lato app
+// (vedi AthleteHome): superata la data, l'atleta vede un messaggio invece
+// del menu allenamenti, nessuna azione richiesta finché non gli si sposta
+// la data in avanti da qui.
+function AccessExpiry({ athlete, onSave }) {
+  const [date, setDate] = useState(athlete.access_until || "");
+  const dirty = date !== (athlete.access_until || "");
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+      <label style={S.miniLbl}>Accesso valido fino al
+        <input type="date" style={{ ...S.numInputSm, width: 150 }} value={date} onChange={(e) => setDate(e.target.value)} />
+      </label>
+      {dirty && <button style={S.ghostBtn} onClick={() => onSave(date)}><Check size={13} /> Salva</button>}
+      {athlete.access_until && <button style={{ ...S.ghostBtn, color: "#888" }} onClick={() => { setDate(""); onSave(""); }}>Rimuovi scadenza</button>}
     </div>
   );
 }

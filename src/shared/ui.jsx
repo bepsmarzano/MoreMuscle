@@ -273,4 +273,5 @@ export const S = {
   badge: { display: "inline-flex", alignItems: "center", fontSize: 11.5, fontWeight: 700, padding: "3px 9px", borderRadius: 20 },
   badgeWaiting: { background: "#3b2a12", color: "#f0b155" },
   badgeAssigned: { background: "#12331f", color: "#5fd88f" },
+  badgeExpired: { background: "#3a1414", color: "#f87171" },
 };

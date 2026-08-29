@@ -111,7 +111,7 @@ export async function listAthletes() {
   const { data, error } = await supabase
     .from("profiles")
     .select(`
-      id, email, full_name, created_at,
+      id, email, full_name, created_at, access_until,
       assigned_warmup_program_id, warmup_position,
       assigned_strength_program_id, strength_position,
       assigned_circuit_program_id, circuit_position,
@@ -121,6 +121,15 @@ export async function listAthletes() {
     .order("created_at", { ascending: false });
   if (error) throw error;
   return data.map((p) => ({ ...p, questionnaire: p.questionnaire_responses?.[0] || p.questionnaire_responses || null }));
+}
+
+// scadenza opzionale dell'accesso (clienti che acquistano un mese/una prova
+// su un programma che dura più mesi) — null = nessuna scadenza. Blocco solo
+// lato app (AthleteHome legge profile.access_until), niente RLS dedicata:
+// la policy "profiles_update_admin_only" di schema.sql copre già questa colonna.
+export async function setAthleteAccessUntil(athleteId, dateStr) {
+  const { error } = await supabase.from("profiles").update({ access_until: dateStr || null }).eq("id", athleteId);
+  if (error) throw error;
 }
 
 // ---- assegnazioni (admin) — le 3 sezioni sono indipendenti, ognuna con la
